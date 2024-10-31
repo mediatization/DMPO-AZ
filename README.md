@@ -7,7 +7,7 @@ This tool was created to aid in the facilitation of ScreenLife Capture studies. 
 ##### Prerequisites
 
 - Knowledge on using the version-control tool Git.
-- Basic knowledge on using `npm`.
+- Basic knowledge on using `npm`. (requires an installation of node.js)
 
 ##### Instructions to run with Electron
 
