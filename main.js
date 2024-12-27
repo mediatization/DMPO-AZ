@@ -107,6 +107,30 @@ const fetchData = async (event = null) => {
         containerName = ud.hashedKey.slice(0, 8 )
         console.log("A ud is being processed")
         console.log("prefix: " + containerName)
+        console.log("encrypted key: " + ud.encryptedKey)
+        console.log("iv: " + ud.iv)
+
+        console.log("Passphrase during fetchData: " + PASSPHRASE)
+
+        if (PASSPHRASE === "") {
+            dialog.showErrorBox("Passphrase Error", "Please submit the project's passphrase before attempting decryption")
+            decryptionQueue = [];
+            return;
+        }
+
+        if (fs.existsSync("password_hash")) {
+            const past = fs.readFileSync("password_hash", "utf8");
+            if (!bcrypt.compareSync(PASSPHRASE, past)) {
+                dialog.showErrorBox("Passphrase Error", "Incorrect passphrase. To reset the passphrase for a new project, delete the 'passphrase_hash' file.")
+                decryptionQueue = [];
+                return;
+            }
+        }
+
+        // Get the decrypted key
+        var rawKey = decipher({encryptedKey: ud.encryptedKey, iv: ud.iv});
+
+        console.log("Raw Key: " + rawKey);
 
         var toReturn = []
         console.log("Listing blobs of container: " + containerName)
@@ -128,7 +152,6 @@ const fetchData = async (event = null) => {
         //console.log(toReturn);
         imageData.push(toReturn);
     }
-
 
     if (event) event.sender.send("update-status", "Processing data..") 
     if (event) event.sender.send("update-cancensor", CANCENSOR) 
@@ -275,7 +298,7 @@ const decrypt = async (event, args) => {
         return;
     }
 
-    console.log("Passphrase: " + PASSPHRASE)
+    console.log("Passphrase during decrypt: " + PASSPHRASE)
 
     if (PASSPHRASE === "") {
         dialog.showErrorBox("Passphrase Error", "Please submit the project's passphrase before attempting decryption")
