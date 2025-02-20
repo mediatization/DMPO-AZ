@@ -123,8 +123,9 @@ const fetchData = async (event = null) => {
         // Get the decrypted key
         var key = decipher({encryptedKey: ud.encryptedKey, iv: ud.iv});
 
-        containerName = ud.hashedKey.slice(0, 8 )
+        containerName = ud.hashedKey.slice(0, 8)
         console.log("Fetched A User Data:")
+        console.log("\tUser Name: " + ud.name)
         console.log("\tContainer Name: " + containerName)
         console.log("\tHashed Key: " + ud.hashedKey)
         console.log("\tKey: " + key)
@@ -163,10 +164,8 @@ const fetchData = async (event = null) => {
             userData[i].numberInBucket = v.length;
             if (v.length > 0) {
                 const filename = v[v.length - 1]?.name
-                const noExtension = filename.substring(0, filename.length-4)
-                const date = noExtension?.substring(9)
-                const dC = date?.split("_")
-                // May update: account for the file descriptor added
+                const dC = filename?.split("_")
+                // Grab year, month, day, hours, minutes, seconds all from filename
                 userData[i].timeSince = timePassedFromDate(new Date(dC[0], dC[1]-1, dC[2], dC[3], dC[4], dC[5]))
             }
         }
@@ -184,7 +183,6 @@ ipcMain.handle("fetch-data", async (event, args) => {
     data = getUserData();
     try {
         data = await fetchData(event);
-        console.log("Fetching user data...")
     }
     catch (err) {
         console.log('err', err)

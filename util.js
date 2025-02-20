@@ -9,7 +9,7 @@ function timePassedFromDate(date) {
     const minutes = Math.round(difference / 60000);
     const hours = Math.round(difference / 3600000);
     const days = Math.round(difference / 86400000);
-    console.log('days', days, 'hours', hours, 'minutes', minutes)
+    //console.log('days', days, 'hours', hours, 'minutes', minutes)
     if (days === 0 && hours === 0) {
         if (minutes > 1) {
             return `${minutes} minutes ago`;
