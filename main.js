@@ -90,7 +90,6 @@ async function listBlobs(containerName)
     {
         toReturn  = []
     }
-    //console.log(toReturn);
     return toReturn;
 }
 
@@ -98,45 +97,45 @@ const fetchData = async (event = null) => {
     // Fetches and combines user and image data
 
     const userData = getUserData();
-    console.log("userdata:")
-    console.log(userData);
+    console.log("Calling fetchData...")
+    console.log("Passphrase during fetchData: " + PASSPHRASE)
+
+    if (PASSPHRASE === "") {
+        dialog.showErrorBox("Passphrase Error", "Please submit the project's passphrase before attempting decryption")
+        console.log("Exiting fetch data due to passphrase warning.")
+        decryptionQueue = [];
+        return;
+    }
+
+    if (fs.existsSync("password_hash")) {
+        const past = fs.readFileSync("password_hash", "utf8");
+        if (!bcrypt.compareSync(PASSPHRASE, past)) {
+            dialog.showErrorBox("Passphrase Error", "Incorrect passphrase. To reset the passphrase for a new project, delete the 'passphrase_hash' file.")
+            console.log("Exiting fetch data due to passphrase warning.")
+            decryptionQueue = [];
+            return;
+        }
+    }
 
     var imageData = []
     for (ud of userData)
     {
-        containerName = ud.hashedKey.slice(0, 8 )
-        console.log("A ud is being processed")
-        console.log("prefix: " + containerName)
-        console.log("encrypted key: " + ud.encryptedKey)
-        console.log("iv: " + ud.iv)
-
-        console.log("Passphrase during fetchData: " + PASSPHRASE)
-
-        if (PASSPHRASE === "") {
-            dialog.showErrorBox("Passphrase Error", "Please submit the project's passphrase before attempting decryption")
-            decryptionQueue = [];
-            return;
-        }
-
-        if (fs.existsSync("password_hash")) {
-            const past = fs.readFileSync("password_hash", "utf8");
-            if (!bcrypt.compareSync(PASSPHRASE, past)) {
-                dialog.showErrorBox("Passphrase Error", "Incorrect passphrase. To reset the passphrase for a new project, delete the 'passphrase_hash' file.")
-                decryptionQueue = [];
-                return;
-            }
-        }
-
         // Get the decrypted key
-        var rawKey = decipher({encryptedKey: ud.encryptedKey, iv: ud.iv});
+        var key = decipher({encryptedKey: ud.encryptedKey, iv: ud.iv});
 
-        console.log("Raw Key: " + rawKey);
+        containerName = ud.hashedKey.slice(0, 8 )
+        console.log("Fetched A User Data:")
+        console.log("\tContainer Name: " + containerName)
+        console.log("\tHashed Key: " + ud.hashedKey)
+        console.log("\tKey: " + key)
+        console.log("\tEncrypted key: " + ud.encryptedKey)
+        console.log("\tiv: " + ud.iv)
 
         var toReturn = []
-        console.log("Listing blobs of container: " + containerName)
+        console.log("\tAccessing container " + containerName + " ...")
         containerClient = blobServiceClient.getContainerClient(containerName)
         exists = await containerClient.exists()
-        console.log("Container " + containerName + " exists? " + exists)
+        console.log("\tContainer " + containerName + " exists? " + exists)
         if (exists == true)
         {
             for await (const blob of containerClient.listBlobsFlat({ includeMetadata: false, includeSnapshots: false, includeTags: false,
@@ -149,35 +148,34 @@ const fetchData = async (event = null) => {
         {
             toReturn  = []
         }
-        //console.log(toReturn);
         imageData.push(toReturn);
     }
 
     if (event) event.sender.send("update-status", "Processing data..") 
     if (event) event.sender.send("update-cancensor", CANCENSOR) 
 
+    console.log("Logging image data from Azure...")
     // For each object v, with inde i
     imageData.forEach((v, i) => {
         if (v != null)
         {
-            console.log("Non null image data (a batch of user images)")
+            console.log("\tIMAGE DATA")
             userData[i].numberInBucket = v.length;
             if (v.length > 0) {
                 const filename = v[v.length - 1]?.name
                 const noExtension = filename.substring(0, filename.length-4)
                 const date = noExtension?.substring(9)
                 const dC = date?.split("_")
-                // TODO: debug, remove
-                console.log(dC)
                 // May update: account for the file descriptor added
                 userData[i].timeSince = timePassedFromDate(new Date(dC[0], dC[1]-1, dC[2], dC[3], dC[4], dC[5]))
             }
         }
         else
         {
-            console.log("Null image data")
+            console.log("\tNULL DATA")
         }
     })
+    console.log("Finished logging image data.")
 
     return Object.values(userData)
 };
@@ -186,8 +184,7 @@ ipcMain.handle("fetch-data", async (event, args) => {
     data = getUserData();
     try {
         data = await fetchData(event);
-        console.log("fetching user data:")
-        console.log(data)
+        console.log("Fetching user data...")
     }
     catch (err) {
         console.log('err', err)
@@ -200,9 +197,9 @@ ipcMain.handle("fetch-data", async (event, args) => {
 });
 
 ipcMain.handle("download-images", async (event, args) => {
-    console.log("Downloading", args.hashedKey)
+    console.log("Downloading from ", args.hashedKey)
     blobs = await listBlobs(args.hashedKey.slice(0, 8))
-    console.log("Number of files to download from container, " + args.hashedKey.slice(0,8) + " : " + blobs.length)
+    console.log("Number of images to download from container, " + args.hashedKey.slice(0,8) + " : " + blobs.length)
     downloader.addFilesToQueue(blobs)
     downloader.printQueue()
     downloader.setCurrentKey(args.hashedKey.slice(0,8))
