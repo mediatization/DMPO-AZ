@@ -21,6 +21,7 @@
     "bcryptjs": "^2.4.3",
     "check-internet-connected": "^2.0.5",
     "os": "^0.1.2",
+    "prompt-sync": "^4.2.0",
     "qrcode": "^1.5.0",
     "react": "^17.0.0"
   }

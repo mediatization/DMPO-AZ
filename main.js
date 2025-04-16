@@ -98,24 +98,11 @@ const fetchData = async (event = null) => {
 
     const userData = getUserData();
     console.log("Calling fetchData...")
-    console.log("Passphrase during fetchData: " + PASSPHRASE)
 
-    if (PASSPHRASE === "") {
-        dialog.showErrorBox("Passphrase Error", "Please submit the project's passphrase before attempting decryption")
-        console.log("Exiting fetch data due to passphrase warning.")
-        decryptionQueue = [];
-        return;
-    }
-
-    if (fs.existsSync("password_hash")) {
-        const past = fs.readFileSync("password_hash", "utf8");
-        if (!bcrypt.compareSync(PASSPHRASE, past)) {
-            dialog.showErrorBox("Passphrase Error", "Incorrect passphrase. To reset the passphrase for a new project, delete the 'passphrase_hash' file.")
-            console.log("Exiting fetch data due to passphrase warning.")
-            decryptionQueue = [];
-            return;
-        }
-    }
+    // This check is needed to ensure the decrypted key is correct when printed below after deciphering
+    const res = await waitForPassphrase()
+    if (!res)
+        return []
 
     var imageData = []
     for (ud of userData)
@@ -293,24 +280,11 @@ const decrypt = async (event, args) => {
         return;
     }
 
-    console.log("Passphrase during decrypt: " + PASSPHRASE)
+    const res = await waitForPassphrase()
+    if (!res)
+        return
 
-    if (PASSPHRASE === "") {
-        dialog.showErrorBox("Passphrase Error", "Please submit the project's passphrase before attempting decryption")
-        decryptionQueue = [];
-        return;
-    }
-
-    if (fs.existsSync("password_hash")) {
-        const past = fs.readFileSync("password_hash", "utf8");
-        if (!bcrypt.compareSync(PASSPHRASE, past)) {
-            dialog.showErrorBox("Passphrase Error", "Incorrect passphrase. To reset the passphrase for a new project, delete the 'passphrase_hash' file.")
-            decryptionQueue = [];
-            return;
-        }
-    }
-
-    const key = decipher(args)
+    const key = decipher({encryptedKey: args.encryptedKey, iv: args.iv})
     const javaPath = settings.javaPath || "java.exe"
     const decryptorPath = resolve("./Decryptor.class")
 
@@ -349,7 +323,7 @@ const decrypt = async (event, args) => {
         console.log('code', code)
         decryptionQueue.shift()
         if (decryptionQueue.length > 0) {
-            decrypt(decryptionQueue[0][0], decryptionQueue[0][1])
+            decrypt(decryptionQueue[0][0], decryptionQueue[0][1], past)
         }
         if (code == 0 && args.acensor) {
             event.sender.send("start-automated-censoring", args)
@@ -423,7 +397,10 @@ const QRCode = require("qrcode")
 const crypto = require("crypto");
 
 ipcMain.handle("open-onboard-window", async (event, args) => {
-    win = new BrowserWindow({
+    const res = await waitForPassphrase()
+    if (!res)
+        return
+    win1 = new BrowserWindow({
         width: 800,
         height: 800,
         webPreferences: {
@@ -431,8 +408,8 @@ ipcMain.handle("open-onboard-window", async (event, args) => {
             contextIsolation: false
         },
     });
-    win.loadFile("onboarding/onboarding.html");
-    win.menuBarVisible = false;
+    win1.loadFile("onboarding/onboarding.html");
+    win1.menuBarVisible = false;
 })
  
 ipcMain.handle("register", async (event, args) => {
@@ -460,13 +437,13 @@ ipcMain.handle("register", async (event, args) => {
 
     const qrcode = await QRCode.toDataURL(key.toString("hex"), { width: 1000 });
 
-    decipher({ encryptedKey, iv: iv.toString("hex")})
+    decipher({ encryptedKey: encryptedKey, iv: iv.toString("hex")})
 
     return { encryptedKey, hashedKey, qrcode }
 })
 
 
-const decipher = ({ encryptedKey, iv }) => {
+const decipher = ({ encryptedKey, iv}) => {
     const _iv = Buffer.from(iv, "hex")
     const _key = Buffer.from(encryptedKey, "hex")
     const decipher = crypto.createDecipheriv("aes-128-gcm", Buffer.from(PASSPHRASE), _iv);
@@ -510,7 +487,7 @@ ipcMain.handle("set-passphrase", async (event, args) => {
         return;
     }
     fs.writeFileSync("password_hash", cur);
-    PASSPHRASE = passphrase;
+    PASSPHRASE = passphrase
     return true;
 })
 
@@ -551,3 +528,254 @@ ipcMain.handle("clear-bucket", async (event, args) => {
         event.sender.send("update-data", data)
     }
 });
+
+const { exec } = require('child_process');
+const path = require('path');
+
+const build = (key, args) =>
+{
+    dmpoPath = "C:/Users/solor/Documents/GitHub/ScreenLife/DMPO-AZ"
+    // Path for App folder (root folder, not subfolder)
+    appPath = settings.appFolder
+    if (!fs.existsSync(appPath)) {
+        console.log("ERROR: failed to find path %s for app folder", appPath)
+        return
+    }
+    // Path for Constants file
+    constantsPath = appPath + "\\app\\src\\main\\java\\com\\example\\screenlife2\\Constants.java"
+    if (!fs.existsSync(constantsPath)) {
+        console.log("ERROR: failed to find path %s for constants file", constantsPath)
+        return
+    }
+    // Path for Keys folder
+    keysPath = dmpoPath + "\\keys"
+    if (!fs.existsSync(keysPath)) {
+        console.log("ERROR: failed to find path %s for keys folder", constantsPath)
+        return
+    }
+    fs.writeFile(constantsPath, constants(settings.uploadAddress, key, args.hashedKey), (err) => {
+        if (err) {
+            console.error('Error occurred writing new values to Constants.java:', err);
+        } else {
+            console.log('Wrote new values to Constants.java');
+            // Build the app apks
+            console.log("Starting build for hashed key: " + args.hashedKey.slice(0,8))
+            // Build
+            const projectDir = appPath
+            const buildType = 'debug'
+            const destinationDir = './apk_output'
+            const gradlew = process.platform === 'win32' ? '.\\gradlew.bat' : './gradlew';
+            const apkPath = path.join(projectDir, 'app', 'build', 'outputs', 'apk', buildType, `app-${buildType}.apk`);
+            const destPath = path.join(destinationDir, `app-${buildType}.apk`);
+
+            // Step 1: Run Gradle build
+            console.log(`Running: ${gradlew}`);
+            exec(gradlew, { cwd: projectDir }, (error, stdout, stderr) => {
+                if (error) {
+                console.error('Gradle build failed:', stderr);
+                return;
+                }
+                else
+                {
+                    console.log('Build successful! Looking for APK at:', apkPath);
+
+                    // Step 2: Check for APK
+                    if (!fs.existsSync(apkPath)) {
+                        console.error('APK not found:', apkPath);
+                    }
+                    else
+                    {
+                        // Step 3: Ensure destination exists
+                        fs.mkdirSync(destinationDir, { recursive: true });
+
+                        // Step 4: Copy APK
+                        fs.copyFileSync(apkPath, destPath);
+                        console.log('APK copied to:', destPath);
+                    }
+                }
+            });
+        }
+    });
+}
+
+const constants = (upload_address, key, hashed_key) =>
+{
+    return ("package com.example.screenlife2;\n" + "public class Constants {\n" + 
+    "\tpublic final static String UPLOAD_ADDRESS = \"" + upload_address +"\";\n" +
+    "\tpublic final static int BATCH_SIZE = 10;\n" +
+    "\tpublic static final int AUTO_UPLOAD_COUNT = 600; //30 min worth of capturing\n" +
+    "\t// This is the decrypted key (or just 'key' in the DMPO, not the 'encrypted key')\n" +
+    "\tpublic static final String USER_KEY = \"" + key + "\";\n" +
+    "\t// This is the hashed key, (not the plain 'hash' in the DMPO, but the 'hashed key')\n" +
+    "\tpublic static final String USER_HASH = \"" + hashed_key  + "\";\n" +
+    "}")
+}
+
+ipcMain.handle("build-for-user", async (event, args, doWait) => {
+    console.log("Building for user", args)
+    if (doWait)
+    {
+        if (!await waitForPassphrase())
+        {
+            console.log("Canceling build, incorrect password")
+            return
+        }
+    }
+    build(decipher(args), args)
+})
+
+ipcMain.handle("check-passphrase", async (event, args) => {
+    return new Promise(async (resolve) => {
+
+        passNew = args.passphrase
+        console.log("Called check-passphrase")
+
+        if (!passNew) {
+            console.log("Missing passphrase");
+            resolve(false)
+        }
+        else if (passNew.length < 16) {
+            dialog.showErrorBox("Passphrase Error", "Please submit the project's passphrase before attempting decryption")
+            console.log("Exiting fetch data due to passphrase warning.")
+            decryptionQueue = [];
+            resolve(false)
+        }
+        else
+        {
+            const past = await loadPassphrase()
+            if (past)
+            {
+                if (!bcrypt.compareSync(passNew, past)) {
+                    dialog.showErrorBox("Passphrase Error", "Incorrect passphrase. To reset the passphrase for a new project, delete the 'passphrase_hash' file.")
+                    console.log("Exiting fetch data due to passphrase warning.")
+                    decryptionQueue = [];
+                    resolve(false)
+                }
+                else
+                {
+                    console.log("check-passphrase returned true")
+                    resolve(true)
+                    PASSPHRASE = passNew
+                }
+            }
+            else
+            {
+                console.log("No passphrase file")
+                decryptionQueue = [];
+                resolve(false)
+            }
+        }
+    })
+})
+
+const waitForPassphrase = async () => {
+    return new Promise((resolve) => {
+        console.log("Called waitForPassphrase")
+
+        if (timerInterval)
+        {
+            resolve(true)
+            return
+        }
+
+        const win2 = new BrowserWindow({
+            width: 400,
+            height: 300,
+            webPreferences: {
+                nodeIntegration: true,
+                contextIsolation: false
+            }    
+        });
+
+        win2.loadFile('passphrase/passphrase.html');
+        win2.menuBarVisible = false;
+
+        returned = false
+
+        ipcMain.once('passphrase-correct', async(event, args) => {
+            console.log("Called passphrase-correct")
+            returned = true
+            win2.close()
+            startTimer()
+            resolve(true)
+        });
+
+        win2.on('closed', () => {
+            // This event is emitted after the window has been closed
+            console.log("Passsphrase window closed early");
+            if (!returned)
+                resolve(false)
+          });
+    });
+}
+
+const loadPassphrase = async () =>
+{
+    return new Promise((resolve) => {
+        if (fs.existsSync("password_hash")){
+            const past = fs.readFileSync("password_hash", "utf8");
+            console.log("Loaded password correctly: " + past)
+            resolve(past)
+        }
+        else{
+            console.log("No password file to load.")
+            resolve("")
+        }
+    })
+}
+
+let countdownDuration = 20 * 60; // 20 minutes in seconds
+let remainingTime = countdownDuration;
+let timerInterval = null;
+
+ipcMain.handle("reset-timer", (event, args) =>{
+    clearInterval(timerInterval)
+    timerInterval = null
+    remainingTime = countdownDuration
+    startTimer() // Restart the timer immediately after resetting
+    win.webContents.send("updateDisplay", {remainingTime: remainingTime})
+})
+
+function startTimer() {
+  if (timerInterval) return; // Prevent multiple intervals
+
+  timerInterval = setInterval(() => {
+    if (remainingTime > 0) {
+      remainingTime--;
+      win.webContents.send("updateDisplay", {remainingTime: remainingTime})
+    } else {
+      clearInterval(timerInterval);
+      timerInterval = null;
+      win.webContents.send("updateDisplay", {remainingTime: remainingTime})
+    }
+  }, 1000);
+}
+
+// 1. Press Build Button // DONE
+// 2. Run Build function // DONE
+//  2a. Call waitForPassphrase // DONE
+    // 2a1. Open window // DONE
+    // 2a2. On button click: check password // DONE
+    // 2a3. If password correct, return true // DONE
+    // 2a4. If passsword wrong, yield return and try again. // DONE
+    // 2a5. If exit, return false // DONE (see below)
+//  2b. If waitForPassphrase was true: build // DONE
+//  2c. If waitForPassphrase was false: cancel build // DONE
+
+// Get rid of password input in top right // DONE
+// Strip out PASSPHRASE instances // DONE
+// Add callback for window termination during passphrase check // DONE
+
+// Consider if we want password for downloading files // WE DO, DONE
+
+// Add countdown to resubmit passphrase // DONE
+// Add check for countdown when doing special actions // DONE
+// Add notification for incorrect password and correct password ***
+// Verify that build, decrypt, and build all wait for open-passphrase-window and submit-passphrase to  // DONE
+    // BUILD // DONE
+    // DECRYPT // DONE
+    // BUILD ALL // DONE
+    // ONBOARD PARTICIPANT // DONE
+    // FETCH DATA // DONE
+// Make APKs build to different subfolders ***
+// Add notification for buidling ***

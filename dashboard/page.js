@@ -13,21 +13,7 @@ function main() {
     document.getElementById("onboard-button").onclick = () => {
         ipcRenderer.invoke("open-onboard-window" )
     }
-    document.getElementById("passphrase-button").onclick = async () => {
-        const passphrase = document.getElementById("passphrase-input").value
-        const didSet = await ipcRenderer.invoke("set-passphrase", { passphrase })
-        if (didSet) {
-            document.getElementById("passphrase-button").style.display = "none";
-            document.getElementById("passphrase-input").style.display = "none";
-            document.getElementById("onboard-button").style.display = "block";
-        }
-    }
-    document.getElementById("passphrase-input").addEventListener("keyup", (event) => {
-    if (event.keyCode === 13) {
-        event.preventDefault();
-        document.getElementById("passphrase-button").click();
-    }
-    });
+    document.getElementById("onboard-button").style.display = "block";
     ipcRenderer.on("update-cancensor", (e, args) => { 
         canCensor = args
         render()
@@ -39,6 +25,21 @@ function main() {
     ipcRenderer.on("update-status", (e, args) => { 
         const usersCount = document.getElementById("users-count")
         usersCount.innerText = args
+    })
+
+    document.getElementById("reset-button").onclick = () => {
+        electron.ipcRenderer.invoke("reset-timer")
+    }
+    ipcRenderer.on("updateDisplay", (e,args) => {
+        document.getElementById("timer-display").textContent = formatTime(args.remainingTime);
+        if (args.remainingTime > 0)
+        {
+            //
+        }
+        else
+        {
+            //
+        }
     })
 
     setInterval(() => {
@@ -64,6 +65,12 @@ function main() {
     }, 5000)
 }
 
+
+function formatTime(seconds) {
+    const mins = String(Math.floor(seconds / 60)).padStart(2, '0');
+    const secs = String(seconds % 60).padStart(2, '0');
+    return `${mins}:${secs}`;
+  }
 
 function createNode(type, text, className) {
     const temp = document.createElement(type)
@@ -102,6 +109,18 @@ function render() {
         })
     }
     buttonBox.appendChild(button)
+
+    let button2 = createNode("p", "Build All", "button default-hidden")
+    button2.onclick = async() => {
+        console.log("building all")
+        let askForPassphrase = true 
+        data.forEach(user => {
+            ipcRenderer.invoke("build-for-user", user, askForPassphrase)
+            askForPassphrase = false
+        })
+    }
+    buttonBox.appendChild(button2)
+
 
     // button = createNode("p", `Decrypt${ canCensor ? ' and Censor All' : ''}`, "button default-hidden")
     // button.id = "decrypt-all-button"
@@ -173,6 +192,15 @@ function render() {
             console.log("decrypting user")
             ipcRenderer.invoke("decrypt-for-user", user)
         }
+
+        actionContainer.appendChild(button)
+
+        button = createNode("p", "Build", "button default-hidden")
+        button.onclick = () => {
+            console.log("building for user")
+            ipcRenderer.invoke("build-for-user", user, true)
+        }
+        
         actionContainer.appendChild(button)
 
         if (canCensor) {
