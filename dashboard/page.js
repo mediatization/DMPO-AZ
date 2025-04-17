@@ -41,7 +41,35 @@ function main() {
             //
         }
     })
-
+    ipcRenderer.on("correct-notif", async(e,args) => {
+        document.getElementById("passphrase-notif").innerText = "ALERT: Passphrase Correct"
+        document.getElementById("passphrase-notif").style.display = "inline-block"
+        await delay(3000)
+        document.getElementById("passphrase-notif").innerText = ""
+        document.getElementById("passphrase-notif").style.display = "none"
+    })
+    ipcRenderer.on("incorrect-notif", (e,args) => {
+        document.getElementById("passphrase-notif").innerText = "ALERT: Passphrase Incorrect"
+        document.getElementById("passphrase-notif").style.display = "inline-block"
+    })
+    ipcRenderer.on("build-notif-start", (e,args) => {
+        document.getElementById("build-notif").innerText = "ALERT: Building"
+        document.getElementById("build-notif").style.display = "inline-block"
+    })
+    ipcRenderer.on("build-notif-failure", async(e,args) => {
+        document.getElementById("build-notif").innerText = "ALERT: Build Failed"
+        document.getElementById("build-notif").style.display = "inline-block"
+        await delay(5000)
+        document.getElementById("build-notif").innerText = ""
+        document.getElementById("build-notif").style.display = "none"
+    })
+    ipcRenderer.on("build-notif-success", async(e,args) => {
+        document.getElementById("build-notif").innerText = "ALERT: Build Success"
+        document.getElementById("build-notif").style.display = "inline-block"
+        await delay(5000)
+        document.getElementById("build-notif").innerText = ""
+        document.getElementById("build-notif").style.display = "none"
+    })
     setInterval(() => {
         // electron.ipcRenderer.invoke("fetch-data", { full: false })
         // .then(d => {

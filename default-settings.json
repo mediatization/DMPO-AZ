@@ -1,6 +1,8 @@
 {
-  "javaPath": "C:/Program Files/Java/jdk-17.0.2/bin/java.exe",
+  "javaPath": "JAVA_PATH",
   "accountName": "ACCOUNT_NAME",
   "accountUrl": "ACCOUNT_URL",
-  "accountKey": "ACCOUNT_KEY"
+  "accountKey": "ACCOUNT_KEY",
+  "uploadAddress": "UPLOAD_ADDRESS",
+  "appFolder": "APP_FOLDER"
 }

@@ -102,7 +102,7 @@ const fetchData = async (event = null) => {
     // This check is needed to ensure the decrypted key is correct when printed below after deciphering
     const res = await waitForPassphrase()
     if (!res)
-        return []
+        return null
 
     var imageData = []
     for (ud of userData)
@@ -199,6 +199,8 @@ const getFiles = (folderPath, username) => (new Promise((resolve) => {
 
 
 const watch = async (data, folderPath, name) => {
+    if (!data)
+        return null
     const userFolders = fs.existsSync(`./${folderPath}`) ? fs.readdirSync(`./${folderPath}`, { withFileTypes:true }).filter(f => f.isDirectory()).map(f => f.name) : []
     const userFiles = await Promise.all(userFolders.map(un => getFiles(folderPath, un)))
     const userNumFiles = userFolders.reduce((a, f, i) => ({ ...a, [f]: userFiles[i].length }), {})
@@ -534,28 +536,34 @@ const path = require('path');
 
 const build = (key, args) =>
 {
+    win.webContents.send("build-notif-start")
+
     dmpoPath = "C:/Users/solor/Documents/GitHub/ScreenLife/DMPO-AZ"
     // Path for App folder (root folder, not subfolder)
     appPath = settings.appFolder
     if (!fs.existsSync(appPath)) {
         console.log("ERROR: failed to find path %s for app folder", appPath)
+        win.webContents.send("build-notif-failure")
         return
     }
     // Path for Constants file
     constantsPath = appPath + "\\app\\src\\main\\java\\com\\example\\screenlife2\\Constants.java"
     if (!fs.existsSync(constantsPath)) {
         console.log("ERROR: failed to find path %s for constants file", constantsPath)
+        win.webContents.send("build-notif-failure")
         return
     }
     // Path for Keys folder
     keysPath = dmpoPath + "\\keys"
     if (!fs.existsSync(keysPath)) {
         console.log("ERROR: failed to find path %s for keys folder", constantsPath)
+        win.webContents.send("build-notif-failure")
         return
     }
     fs.writeFile(constantsPath, constants(settings.uploadAddress, key, args.hashedKey), (err) => {
         if (err) {
             console.error('Error occurred writing new values to Constants.java:', err);
+            win.webContents.send("build-notif-failure")
         } else {
             console.log('Wrote new values to Constants.java');
             // Build the app apks
@@ -563,25 +571,27 @@ const build = (key, args) =>
             // Build
             const projectDir = appPath
             const buildType = 'debug'
-            const destinationDir = './apk_output'
+            const destinationDir = './apk_output/' + args.hashedKey.slice(0,8)
             const gradlew = process.platform === 'win32' ? '.\\gradlew.bat' : './gradlew';
             const apkPath = path.join(projectDir, 'app', 'build', 'outputs', 'apk', buildType, `app-${buildType}.apk`);
-            const destPath = path.join(destinationDir, `app-${buildType}.apk`);
+            const destPath = path.join(destinationDir, `app-${buildType}-${args.hashedKey.slice(0,8)}.apk`);
 
             // Step 1: Run Gradle build
             console.log(`Running: ${gradlew}`);
             exec(gradlew, { cwd: projectDir }, (error, stdout, stderr) => {
                 if (error) {
                 console.error('Gradle build failed:', stderr);
+                win.webContents.send("build-notif-failure")
                 return;
                 }
                 else
                 {
-                    console.log('Build successful! Looking for APK at:', apkPath);
+                    console.log('Build complete! Looking for APK at:', apkPath);
 
                     // Step 2: Check for APK
                     if (!fs.existsSync(apkPath)) {
                         console.error('APK not found:', apkPath);
+                        win.webContents.send("build-notif-failure")
                     }
                     else
                     {
@@ -591,6 +601,7 @@ const build = (key, args) =>
                         // Step 4: Copy APK
                         fs.copyFileSync(apkPath, destPath);
                         console.log('APK copied to:', destPath);
+                        win.webContents.send("build-notif-success")
                     }
                 }
             });
@@ -649,11 +660,13 @@ ipcMain.handle("check-passphrase", async (event, args) => {
                     dialog.showErrorBox("Passphrase Error", "Incorrect passphrase. To reset the passphrase for a new project, delete the 'passphrase_hash' file.")
                     console.log("Exiting fetch data due to passphrase warning.")
                     decryptionQueue = [];
+                    win.webContents.send("incorrect-notif")
                     resolve(false)
                 }
                 else
                 {
                     console.log("check-passphrase returned true")
+                    win.webContents.send("correct-notif")
                     resolve(true)
                     PASSPHRASE = passNew
                 }
@@ -662,6 +675,7 @@ ipcMain.handle("check-passphrase", async (event, args) => {
             {
                 console.log("No passphrase file")
                 decryptionQueue = [];
+                win.webContents.send("incorrect-notif")
                 resolve(false)
             }
         }
@@ -701,10 +715,13 @@ const waitForPassphrase = async () => {
         });
 
         win2.on('closed', () => {
-            // This event is emitted after the window has been closed
-            console.log("Passsphrase window closed early");
             if (!returned)
+            {
+                // This event is emitted after the window has been closed
+                console.log("Passsphrase window closed early");
+                win.webContents.send("incorrect-notif")
                 resolve(false)
+            }
           });
     });
 }
@@ -770,12 +787,13 @@ function startTimer() {
 
 // Add countdown to resubmit passphrase // DONE
 // Add check for countdown when doing special actions // DONE
-// Add notification for incorrect password and correct password ***
+// Add notification for incorrect password and correct password // DONE
 // Verify that build, decrypt, and build all wait for open-passphrase-window and submit-passphrase to  // DONE
     // BUILD // DONE
     // DECRYPT // DONE
     // BUILD ALL // DONE
     // ONBOARD PARTICIPANT // DONE
     // FETCH DATA // DONE
-// Make APKs build to different subfolders ***
-// Add notification for buidling ***
+// Make APKs build to different subfolders // DONE
+// Add notification for buidling // DONE
+// Change default settings for DMPO // DONE
