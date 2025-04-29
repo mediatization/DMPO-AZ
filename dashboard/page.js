@@ -52,6 +52,17 @@ function main() {
         document.getElementById("passphrase-notif").innerText = "ALERT: Passphrase Incorrect"
         document.getElementById("passphrase-notif").style.display = "inline-block"
     })
+    ipcRenderer.on("new-good-pass-notif", async(e,args) => {
+        document.getElementById("passphrase-notif").innerText = "ALERT: Set New Passphrase"
+        document.getElementById("passphrase-notif").style.display = "inline-block"
+        await delay(3000)
+        document.getElementById("passphrase-notif").innerText = ""
+        document.getElementById("passphrase-notif").style.display = "none"
+    })
+    ipcRenderer.on("new-bad-pass-notif", (e,args) => {
+        document.getElementById("passphrase-notif").innerText = "ALERT: Bad New Passphrase"
+        document.getElementById("passphrase-notif").style.display = "inline-block"
+    })
     ipcRenderer.on("build-notif-start", (e,args) => {
         document.getElementById("build-notif").innerText = "ALERT: Building"
         document.getElementById("build-notif").style.display = "inline-block"

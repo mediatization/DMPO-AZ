@@ -35,6 +35,8 @@ const spawn = require("child_process").spawn;
 
 let data = [];
 let win;
+let win1;
+let win2;
 
 function createWindow() {
     win = new BrowserWindow({
@@ -45,7 +47,14 @@ function createWindow() {
             contextIsolation: false
         },
     });
-
+    /*
+    win.addEventListener('beforeunload', (event) => {
+        if (win1)
+            win1.close()
+        if (win2)
+            win2.close()
+    }); 
+    */
     win.loadFile("dashboard/index.html");
     win.setMenu(null)
 }
@@ -466,33 +475,6 @@ ipcMain.handle("remove-user", async (event, args) => {
     fs.unlinkSync("keys/" + hashedKey);
 })
 
-ipcMain.handle("set-passphrase", async (event, args) => {
-    const { passphrase } = args;
-    const cur = await new Promise((resolve, reject) => {
-        bcrypt.hash(passphrase, 13, (err, hash) => {
-            if (err) reject(err)
-            resolve(hash)
-        });
-    })
-    if (fs.existsSync("password_hash")) {
-        const past = fs.readFileSync("password_hash", "utf8");
-        if (!bcrypt.compareSync(passphrase, past)) {
-            dialog.showMessageBoxSync({ 
-                type: "error",
-                message: "Incorrect passphrase. To reset the passphrase for a new project, delete the 'passphrase_hash' file."
-            })
-            return false;
-        }
-    }
-    if (passphrase.length !== 16) {
-        dialog.showErrorBox("Passphrase Error", "Passphrase must be 16 characters long")
-        return;
-    }
-    fs.writeFileSync("password_hash", cur);
-    PASSPHRASE = passphrase
-    return true;
-})
-
 const deleteFiles = async (files) => (
     new Promise((resolve) => { 
         const options = {
@@ -674,9 +656,19 @@ ipcMain.handle("check-passphrase", async (event, args) => {
             else
             {
                 console.log("No passphrase file")
-                decryptionQueue = [];
-                win.webContents.send("incorrect-notif")
-                resolve(false)
+                const newPass = setPassphrase(event, args)
+                if (newPass)
+                {
+                    console.log("check-passphrase returned true")
+                    win.webContents.send("new-good-pass-notif")
+                    resolve(true)
+                }
+                else
+                {
+                    decryptionQueue = [];
+                    win.webContents.send("new-bad-pass-notif")
+                    resolve(false)
+                }
             }
         }
     })
@@ -692,7 +684,7 @@ const waitForPassphrase = async () => {
             return
         }
 
-        const win2 = new BrowserWindow({
+        win2 = new BrowserWindow({
             width: 400,
             height: 300,
             webPreferences: {
@@ -740,6 +732,24 @@ const loadPassphrase = async () =>
         }
     })
 }
+
+const setPassphrase = async (event, args) => {
+    const { passphrase } = args;
+    const cur = await new Promise((resolve, reject) => {
+        bcrypt.hash(passphrase, 13, (err, hash) => {
+            if (err) reject(err)
+            resolve(hash)
+        });
+    })
+    if (passphrase.length !== 16) {
+        dialog.showErrorBox("Passphrase Error", "Passphrase must be 16 characters long")
+        return false;
+    }
+    fs.writeFileSync("password_hash", cur);
+    PASSPHRASE = passphrase
+    return true;
+}
+
 
 let countdownDuration = 20 * 60; // 20 minutes in seconds
 let remainingTime = countdownDuration;
@@ -797,3 +807,4 @@ function startTimer() {
 // Make APKs build to different subfolders // DONE
 // Add notification for buidling // DONE
 // Change default settings for DMPO // DONE
+// Add check to close auxillary windows when closing main window ***
