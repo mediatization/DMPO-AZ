@@ -520,7 +520,7 @@ const build = (key, args) =>
 {
     win.webContents.send("build-notif-start")
 
-    dmpoPath = "C:/Users/solor/Documents/GitHub/ScreenLife/DMPO-AZ"
+    dmpoPath = __dirname
     // Path for App folder (root folder, not subfolder)
     appPath = settings.appFolder
     if (!fs.existsSync(appPath)) {
@@ -529,14 +529,14 @@ const build = (key, args) =>
         return
     }
     // Path for Constants file
-    constantsPath = appPath + "\\app\\src\\main\\java\\com\\example\\screenlife2\\Constants.java"
+    constantsPath = appPath + "/app/src/main/java/com/example/screenlife2/Constants.java"
     if (!fs.existsSync(constantsPath)) {
         console.log("ERROR: failed to find path %s for constants file", constantsPath)
         win.webContents.send("build-notif-failure")
         return
     }
     // Path for Keys folder
-    keysPath = dmpoPath + "\\keys"
+    keysPath = dmpoPath + "/keys"
     if (!fs.existsSync(keysPath)) {
         console.log("ERROR: failed to find path %s for keys folder", constantsPath)
         win.webContents.send("build-notif-failure")
@@ -554,9 +554,16 @@ const build = (key, args) =>
             const projectDir = appPath
             const buildType = 'debug'
             const destinationDir = './apk_output/' + args.hashedKey.slice(0,8)
-            const gradlew = process.platform === 'win32' ? '.\\gradlew.bat' : './gradlew';
+            // For mac, this needs to be assembleDebug for some reason
+            const gradlew = process.platform === 'win32' ? '.\\gradlew.bat' : './gradlew assembleDebug';
             const apkPath = path.join(projectDir, 'app', 'build', 'outputs', 'apk', buildType, `app-${buildType}.apk`);
             const destPath = path.join(destinationDir, `app-${buildType}-${args.hashedKey.slice(0,8)}.apk`);
+
+            fs.chmod(path.join(projectDir, "gradlew"), 0o775, (err) =>
+            {
+                if (err) throw err;
+                console.log("The permissions for gradle were changed")
+            })
 
             // Step 1: Run Gradle build
             console.log(`Running: ${gradlew}`);
