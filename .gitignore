@@ -120,9 +120,15 @@ encrypted
 decrypted
 cleaned_automated
 keys_old
+/apk_output
+/keys
+
 
 mongo_creds.json
 user_data.json
 screenomics-sutd*.json
 settings.json
 bucket_key.json
+password_hash
+default-settings.json
+._*
