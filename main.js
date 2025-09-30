@@ -405,6 +405,19 @@ ipcMain.handle("open-in-explorer", async (event, args) => {
 
 })
 
+ipcMain.handle("open-image-analysis", async (event, args) => {
+    win1 = new BrowserWindow({
+        width: 800,
+        height: 800,
+        webPreferences: {
+            nodeIntegration: true,
+            contextIsolation: false
+        },
+    });
+    win1.loadFile("imageAnalysis/imageAnalysis.html");
+    win1.menuBarVisible = false;
+})
+
 const QRCode = require("qrcode")
 const crypto = require("crypto");
 
@@ -424,6 +437,8 @@ ipcMain.handle("open-onboard-window", async (event, args) => {
     win1.menuBarVisible = false;
 })
  
+//might be dead code? only place this gets called is in the only function inside
+//onboarding.js which appears to not be called anywhere
 ipcMain.handle("register", async (event, args) => {
     const { name } = args;
 

@@ -18,6 +18,9 @@ function main() {
         canCensor = args
         render()
     })
+    document.getElementById("image-analysis").onclick = () => {
+        ipcRenderer.invoke("open-image-analysis" )
+    }    
     ipcRenderer.on("update-data", (e, args) => { 
         data = args
         render()
