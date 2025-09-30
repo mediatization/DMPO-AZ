@@ -4,6 +4,7 @@ const Storage = require("@azure/storage-blob");
 const { timePassedFromDate } = require("./util");
 const checkInternetConnected = require('check-internet-connected');
 const bcrypt = require('bcryptjs');
+const os = require('os');
 const { Downloader } = require("./downloader");
 
 let decryptionQueue = []
@@ -529,7 +530,13 @@ const build = (key, args) =>
         return
     }
     // Path for Constants file
-    constantsPath = appPath + "/app/src/main/java/com/example/screenlife2/Constants.java"
+    if (os.platform === 'win32') {
+        constantsPath = appPath + "\\app\\src\\main\\java\\com\\example\\screenlife2\\Constants.java";
+    }
+    else {
+        constantsPath = appPath + "/app/src/main/java/com/example/screenlife2/Constants.java";
+    }
+    
     if (!fs.existsSync(constantsPath)) {
         console.log("ERROR: failed to find path %s for constants file", constantsPath)
         win.webContents.send("build-notif-failure")
@@ -629,7 +636,10 @@ ipcMain.handle("check-passphrase", async (event, args) => {
 
         passNew = args.passphrase
         console.log("Called check-passphrase")
-
+        
+        //TODO: give better error feedback?
+        //also apparently deleting password hash just lets us make a new password
+        //maybe add a security check to delete all existing users if password_hash gets deleted
         if (!passNew) {
             console.log("Missing passphrase");
             resolve(false)
