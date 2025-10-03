@@ -3,15 +3,30 @@
     <head>
         <meta charset="UTF-8" />
         <title>Image Analysis</title>
-        <!-- https://electronjs.org/docs/tutorial/security#csp-meta-tag -->
-        <meta
-            http-equiv="Content-Security-Policy"
-            content="script-src 'self' 'unsafe-inline';"
-        />
+        <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline';"/>
     </head>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="./style.css">
     <body id="body">
-        <p>hello</p>
+        <div>
+            <h1>Process Images</h1>
+            <label for="imageSelector">Choose images: </label>
+            <input type="file" id="imageSelector" multiple>
+
+            <input type="button" onclick="test();" value="aaaa">
+        </div>
+
+        <hr>
+
+        <div>
+            <h1>Search Images</h1>
+            <label for="imgSearch">Search through processed images</label> 
+            <input type="search" id="imgSearch"> 
+        </div>
+
+        <div id="testDiv">
+
+        </div>
+
+        <script src="./imageAnalysis.js"></script>
     </body>
-    <script src="imageAnalysis.js"></script>
 </html>
