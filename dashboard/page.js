@@ -4,6 +4,29 @@ const { ipcRenderer } = require('electron/renderer');
 
 let data = [];
 let canCensor = false;
+// track per-key download progress: { '<key>': { downloaded, total } }
+let downloadProgress = {}
+
+// small helper used in a few places
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+// download notification management so messages persist across refreshes
+let downloadNotifTimeout = null
+function setDownloadNotif(text, duration = 3000) {
+    const el = document.getElementById("download-notif")
+    if (!el) return
+    // show text and keep visible for `duration` ms
+    el.innerText = text
+    el.style.display = "inline-block"
+    if (downloadNotifTimeout) {
+        clearTimeout(downloadNotifTimeout)
+    }
+    downloadNotifTimeout = setTimeout(() => {
+        el.innerText = ""
+        el.style.display = "none"
+        downloadNotifTimeout = null
+    }, duration)
+}
 
 function main() {
     electron.ipcRenderer.invoke("fetch-data", { full: true })
@@ -20,6 +43,13 @@ function main() {
     })
     ipcRenderer.on("update-data", (e, args) => { 
         data = args
+        render()
+    })
+    // download progress events from main
+    ipcRenderer.on('download-progress', (e, args) => {
+        // args: { key, downloaded, total, username }
+        if (!args || !args.key) return
+        downloadProgress[args.key] = { downloaded: args.downloaded, total: args.total, username: args.username }
         render()
     })
     ipcRenderer.on("update-status", (e, args) => { 
@@ -132,6 +162,7 @@ function render() {
     const headerContainer = document.createElement("thead")
     const header = document.createElement("tr")
     header.appendChild(createNode("th", "Username", "username-label"))
+    header.appendChild(createNode("th", "Progress", "progress-label"))
     header.appendChild(createNode("th", "Last Capture", "time-label"))
     header.appendChild(createNode("th", "In Bucket", "number"))
     header.appendChild(createNode("th", "Downloaded", "number"))
@@ -141,11 +172,19 @@ function render() {
     const buttonBox = createNode("th", "")
 
     let button = createNode("p", "Download All", "button default-hidden")
-    button.onclick = () => {
+    button.onclick = async () => {
         console.log("downloading all")
-        data.forEach(user => {
-            ipcRenderer.invoke("download-images", user)
-        })
+        try {
+            const promises = data.map(user => ipcRenderer.invoke("download-images", user))
+            await Promise.all(promises)
+            setDownloadNotif('Download All: Success', 4000)
+        } catch (err) {
+            console.error('download all failed', err)
+            setDownloadNotif('Download All: Failed', 6000)
+        } finally {
+            // refresh data so UI stays up to date after downloads
+            ipcRenderer.invoke("fetch-data", { full: true })
+        }
     }
     buttonBox.appendChild(button)
 
@@ -179,7 +218,31 @@ function render() {
     for (let user of data) {
         const tr = document.createElement("tr")
 
+        // username
         tr.appendChild(createNode("td", user.name))
+
+        // progress cell: show progress bar if present for this user's key
+        const keyPrefix = user.hashedKey ? user.hashedKey.slice(0,8) : (user.username || '')
+        const progCell = document.createElement('td')
+        progCell.className = 'progress-cell'
+        const progData = downloadProgress[keyPrefix]
+        if (progData && progData.total > 0) {
+            const percent = Math.round((progData.downloaded / progData.total) * 100)
+            const barOuter = document.createElement('div')
+            barOuter.className = 'progress-outer'
+            const barInner = document.createElement('div')
+            barInner.className = 'progress-inner'
+            barInner.style.width = percent + '%'
+            barOuter.appendChild(barInner)
+            const text = document.createElement('div')
+            text.className = 'progress-text'
+            text.textContent = `${progData.downloaded}/${progData.total} (${percent}%)`
+            progCell.appendChild(barOuter)
+            progCell.appendChild(text)
+        } else {
+            progCell.textContent = ''
+        }
+        tr.appendChild(progCell)
 
         console.log('timSince', user)
         const timeLabel = createNode("td", user.lastImageAddedOn == "N.A." ? "" : user.timeSince, "time-label")
@@ -220,9 +283,18 @@ function render() {
 
         const actionContainer = createNode("td")
         let button = createNode("p", "Download", "button default-hidden")
-        button.onclick = () => {
+        button.onclick = async () => {
             console.log("downloading")
-            ipcRenderer.invoke("download-images", user)
+            try {
+                await ipcRenderer.invoke("download-images", user)
+                setDownloadNotif(`${user.name}: Download Success`, 4000)
+            } catch (err) {
+                console.error('download failed for user', user, err)
+                setDownloadNotif(`${user.name}: Download Failed`, 6000)
+            } finally {
+                // refresh data so UI stays up to date after download
+                ipcRenderer.invoke("fetch-data", { full: true })
+            }
         }
         actionContainer.appendChild(button)
 
@@ -251,15 +323,21 @@ function render() {
         }
 
         button = createNode("p", "Remove", "button default-hidden")
-        button.onclick = () => {
-            ipcRenderer.invoke("remove-user", user)
+        button.onclick = async () => {
+            try {
+                await ipcRenderer.invoke("remove-user", user)
+            } catch (e) { console.error('remove-user failed', e) }
+            ipcRenderer.invoke("fetch-data", { full: true })
         }
         actionContainer.appendChild(button)
 
         button = createNode("p", "Clear Bucket", "button default-hidden")
-        button.onclick = () => {
+        button.onclick = async () => {
             console.log("clearing bucket")
-            ipcRenderer.invoke("clear-bucket", user)
+            try {
+                await ipcRenderer.invoke("clear-bucket", user)
+            } catch (e) { console.error('clear-bucket failed', e) }
+            ipcRenderer.invoke("fetch-data", { full: true })
         }
         actionContainer.appendChild(button)
 

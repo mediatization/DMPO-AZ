@@ -7,11 +7,26 @@ class Downloader {
         this.maxNumDownloads = 1000;
         this.downloading = false
         this.currentKey = "";
+        this.currentTotal = 0;
+        this.currentDownloaded = 0;
+        this.progressCallback = null;
     }
 
     setCurrentKey(newKey)
     {
         this.currentKey = newKey;
+        this.currentDownloaded = 0;
+        this.currentTotal = 0;
+    }
+
+    setCurrentKey(newKey, total) {
+        this.currentKey = newKey;
+        this.currentDownloaded = 0;
+        this.currentTotal = total || 0;
+    }
+
+    setProgressCallback(cb) {
+        this.progressCallback = cb
     }
 
     addFilesToQueue(files) {
@@ -36,6 +51,10 @@ class Downloader {
         while (this.queue.length > 0) {
             const file = this.queue.shift()
             await ensureDownload(file, this.currentKey);
+            this.currentDownloaded = (this.currentDownloaded || 0) + 1
+            if (this.progressCallback) {
+                try { this.progressCallback(this.currentKey, this.currentDownloaded, this.currentTotal) } catch(e) { console.error('progress callback', e) }
+            }
         }
         this.downloading = false
     }

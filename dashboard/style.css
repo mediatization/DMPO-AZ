@@ -3,6 +3,10 @@ table {
     cursor: default;
     table-layout: fixed;
 }
+/* compact base sizing */
+body {
+    font-size: 13px;
+}
 table,
 th,
 td {
@@ -10,17 +14,13 @@ td {
     border-collapse: collapse;
     text-align: left;
 }
-thead {
-    /* border-bottom-color: lightgray;
-      border-bottom-style: solid;
-      border-bottom-width: 1px; */
-}
+/* thead styles removed (not needed) */
 /* table thead {
       position: fixed;
     } */
 td,
 th {
-    padding: 12px 14px;
+    padding: 8px 10px;
     font-weight: normal;
     border-bottom-style: dashed;
     border-bottom-color: rgb(246, 246, 246);
@@ -28,6 +28,9 @@ th {
     border-right-style: dashed;
     border-right-color: rgb(246, 246, 246);
     border-right-width: 1px;
+    vertical-align: middle;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 td:last-child,
 th:last-child {
@@ -41,11 +44,17 @@ thead > tr:hover {
     background-color: unset;
 }
 
-tr .default-hidden {
+tbody tr .default-hidden {
     opacity: 0%;
 }
-tr:hover .default-hidden {
+tbody tr:hover .default-hidden {
     opacity: 100%;
+}
+
+/* fix row height so participant rows don't stretch vertically */
+tbody tr {
+    height: 36px;
+    max-height: 36px;
 }
 /* tr:nth-child(even) {background-color: #f2f2f2;} */
 button {
@@ -58,17 +67,20 @@ button {
     background-color: white;
     position: fixed;
     width: 98%;
-    height: 44px;
+    height: 36px;
 }
 .button {
     display: inline-block;
     cursor: pointer;
     border-radius: 5px;
-    margin-left: 8px;
-    margin-right: 8px;
+    margin-left: 6px;
+    margin-right: 6px;
     color: gray;
     -moz-user-select: none;
     -webkit-user-select: none;
+    user-select: none;
+    font-size: 12px;
+    padding: 3px 6px;
     /* background-color: rgb(82, 206, 119); */
 }
 .button:hover {
@@ -79,7 +91,7 @@ button {
 }
 #main {
     position: fixed;
-    top: 40px;
+    top: 36px;
     bottom: 0px;
     left: 0px;
     right: 0px;
@@ -87,7 +99,7 @@ button {
 }
 .number {
     text-align: right;
-    width: 110px;
+    width: 90px;
 }
 p {
     margin: 0px;
@@ -96,13 +108,37 @@ p {
     margin-left: 14px;
 }
 .time-label {
+    width: 100px;
+}
+.username-label {
     width: 120px;
 }
 .username-label {
-    width: 150;
+    width: 120px;
 }
-.username-label {
-    width: 150px;
+/* progress bar styles */
+.progress-cell {
+    width: 140px;
+}
+.progress-outer {
+    width: 100%;
+    height: 6px;
+    background: #eee;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-right: 8px;
+}
+.progress-inner {
+    height: 100%;
+    background: linear-gradient(90deg, #60b7e9, #3aa0d6);
+    width: 0%;
+    transition: width 150ms linear;
+}
+.progress-text {
+    display: inline-block;
+    font-size: 11px;
+    color: #333;
+    margin-left: 6px;
 }
 .clickable {
     cursor: pointer;
@@ -115,7 +151,7 @@ p {
 }
 .tableFixHead {
     overflow-y: auto;
-    height: 100px;
+    height: calc(100% - 36px);
 }
 .tableFixHead thead th {
     position: sticky;
