@@ -1,10 +1,7 @@
 const electron = require('electron');
 import { createWorker } from 'tesseract.js';
 
-const test = async () => {
-    console.log("hello world");
-    document.getElementById("testDiv").appendChild(document.createTextNode("Hello world"));
-}
+document.getElementById("testDiv").appendChild(document.createTextNode("hello world"));
 
 // function main() {
 //     electron.ipcRenderer.invoke("fetch-data", { full: true });

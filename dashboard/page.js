@@ -13,14 +13,14 @@ function main() {
     document.getElementById("onboard-button").onclick = () => {
         ipcRenderer.invoke("open-onboard-window" )
     }
+    document.getElementById("image-analysis").onclick = () => {
+        ipcRenderer.invoke("open-image-analysis" )
+    }    
     document.getElementById("onboard-button").style.display = "block";
     ipcRenderer.on("update-cancensor", (e, args) => { 
         canCensor = args
         render()
     })
-    document.getElementById("image-analysis").onclick = () => {
-        ipcRenderer.invoke("open-image-analysis" )
-    }    
     ipcRenderer.on("update-data", (e, args) => { 
         data = args
         render()

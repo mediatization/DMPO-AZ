@@ -405,7 +405,13 @@ ipcMain.handle("open-in-explorer", async (event, args) => {
 
 })
 
+const QRCode = require("qrcode")
+const crypto = require("crypto");
+
 ipcMain.handle("open-image-analysis", async (event, args) => {
+    const res = await waitForPassphrase()
+    if (!res)
+        return
     win1 = new BrowserWindow({
         width: 800,
         height: 800,
@@ -417,9 +423,6 @@ ipcMain.handle("open-image-analysis", async (event, args) => {
     win1.loadFile("imageAnalysis/imageAnalysis.html");
     win1.menuBarVisible = false;
 })
-
-const QRCode = require("qrcode")
-const crypto = require("crypto");
 
 ipcMain.handle("open-onboard-window", async (event, args) => {
     const res = await waitForPassphrase()
