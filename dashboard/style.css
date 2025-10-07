@@ -150,8 +150,31 @@ p {
     color: rgb(2, 37, 58);
 }
 .tableFixHead {
+    display: block;
+    width: 100%;
+    max-height: calc(100% - 36px);
+}
+.tableFixHead thead {
+    display: table;
+    width: 100%;
+    table-layout: fixed;
+}
+.tableFixHead thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: white; /* ensure header covers scrolling content beneath */
+}
+.tableFixHead tbody {
+    display: block;
+    width: 100%;
+    max-height: calc(100% - 36px);
     overflow-y: auto;
-    height: calc(100% - 36px);
+}
+.tableFixHead tbody tr {
+    display: table;
+    table-layout: fixed;
+    width: 100%;
 }
 .tableFixHead thead th {
     position: sticky;
