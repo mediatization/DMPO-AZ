@@ -265,7 +265,7 @@ function render() {
 
         const decryptedCount = createNode("td", user.decryptedCount == 0 ? "" : user.decryptedCount, "number clickable")
         decryptedCount.onclick = () => {
-            ipcRenderer.invoke("open-in-explorer", "./decrypted/" + user.hashedKey.slice(0, 8))
+            ipcRenderer.invoke("open-decrypted", { prefix: user.hashedKey.slice(0, 8) })
         }
         tr.appendChild(decryptedCount)
 

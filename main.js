@@ -6,6 +6,7 @@ const checkInternetConnected = require('check-internet-connected');
 const bcrypt = require('bcryptjs');
 const os = require('os');
 const { Downloader } = require("./downloader");
+const crypto = require('crypto');
 
 let decryptionQueue = []
 let censoringQueue = []
@@ -38,6 +39,10 @@ let data = [];
 let win;
 let win1;
 let win2;
+// session id used to isolate ephemeral decrypted folders for this app run
+const SESSION_ID = crypto.randomBytes(8).toString('hex')
+// track ephemeral decrypted dirs: { '<prefix>': '<abs_temp_path>' }
+const ephemeralDecrypted = {}
 
 function createWindow() {
     win = new BrowserWindow({
@@ -61,6 +66,7 @@ function createWindow() {
 }
 
 app.whenReady().then(createWindow);
+
 
 app.on("window-all-closed", () => {
     if (process.platform !== "darwin") {
@@ -333,7 +339,16 @@ const decrypt = async (event, args) => {
     }
 
     const folderName = resolve(`./encrypted/${args.hashedKey.slice(0, 8)}/`)
-    const destFolderName = resolve(`./decrypted/${args.hashedKey.slice(0, 8)}/`)
+    // create ephemeral temp folder for decrypted files
+    const prefix = args.hashedKey.slice(0, 8)
+    const destFolderName = resolve(`${os.tmpdir()}/dmpo_decrypted_${SESSION_ID}_${prefix}/`)
+    // store mapping so we can cleanup and open later
+    ephemeralDecrypted[prefix] = destFolderName
+
+    // ensure a small marker remains in ./decrypted/<prefix> so the UI can count it
+    const markerDir = resolve(`./decrypted/${prefix}/`)
+    try { fs.mkdirSync(markerDir, { recursive: true }) } catch (e) {}
+    try { fs.writeFileSync(resolve(markerDir, '.session_marker'), SESSION_ID) } catch (e) {}
 
     if (!fs.existsSync(folderName)) {
         dialog.showErrorBox("Missing folder error", `Missing folder "${folderName}"`)
@@ -424,8 +439,46 @@ ipcMain.handle("open-in-explorer", async (event, args) => {
 
 })
 
+// Open ephemeral decrypted folder for a user prefix (if available), otherwise open the marker folder
+ipcMain.handle("open-decrypted", async (event, args) => {
+    const prefix = args.prefix || args
+    const ephemeral = ephemeralDecrypted[prefix]
+    if (ephemeral && fs.existsSync(ephemeral)) {
+        return shell.openPath(ephemeral)
+    }
+    // fallback: open the marker folder under ./decrypted
+    const markerDir = resolve(`./decrypted/${prefix}/`)
+    if (fs.existsSync(markerDir)) return shell.openPath(markerDir)
+    return null
+})
+
+// cleanup ephemeral directories and markers on quit/crash
+const cleanupEphemeral = () => {
+    try {
+        Object.keys(ephemeralDecrypted).forEach(prefix => {
+            const p = ephemeralDecrypted[prefix]
+            try { fs.rmdirSync(p, { recursive: true }) } catch (e) {}
+            const markerDir = resolve(`./decrypted/${prefix}/`)
+            try { fs.unlinkSync(resolve(markerDir, '.session_marker')) } catch (e) {}
+            // if marker dir is empty, remove it
+            try {
+                const files = fs.readdirSync(markerDir)
+                if (files.length === 0) fs.rmdirSync(markerDir)
+            } catch (e) {}
+        })
+    } catch (e) {
+        console.error('cleanupEphemeral error', e)
+    }
+}
+
+app.on('before-quit', () => {
+    cleanupEphemeral()
+})
+
+process.on('SIGINT', () => { cleanupEphemeral(); process.exit(0) })
+process.on('uncaughtException', (err) => { console.error('uncaughtException', err); cleanupEphemeral(); process.exit(1) })
+
 const QRCode = require("qrcode")
-const crypto = require("crypto");
 
 ipcMain.handle("open-onboard-window", async (event, args) => {
     const res = await waitForPassphrase()
@@ -791,6 +844,84 @@ const loadPassphrase = async () =>
     })
 }
 
+// Compute a simple integrity signature (sha256 of the password_hash contents)
+const computeHashOfFile = (filePath) => {
+    try {
+        if (!fs.existsSync(filePath)) return "";
+        const v = fs.readFileSync(filePath, 'utf8')
+        const h = crypto.createHash('sha256')
+        h.update(v)
+        return h.digest('hex')
+    }
+    catch (e) {
+        console.error('computeHashOfFile error', e)
+        return ""
+    }
+}
+
+// Delete all user-related local data: keys and local folders storing images
+const deleteAllUserData = () => {
+    console.log('Deleting all user keys and local data due to password_hash change or removal')
+    try {
+        if (fs.existsSync('keys')) {
+            fs.readdirSync('keys').forEach(f => {
+                try { fs.unlinkSync(`keys/${f}`) } catch (e) {}
+            })
+            try { fs.rmdirSync('keys') } catch (e) {}
+        }
+
+        const folders = ['encrypted','decrypted','cleaned_automated','final','apk_output']
+        folders.forEach(folder => {
+            if (fs.existsSync(folder)) {
+                fs.readdirSync(folder).forEach(sub => {
+                    const p = `${folder}/${sub}`
+                    try { fs.rmdirSync(p, { recursive: true }) } catch (e) {}
+                })
+            }
+        })
+    } catch (e) {
+        console.error('deleteAllUserData error', e)
+    }
+}
+
+// Check integrity of password_hash against a sidecar file 'password_hash.meta'.
+// Behavior:
+// - If meta exists: enforce it. If password_hash is removed or its contents differ -> purge and remove meta.
+// - If meta does NOT exist: initialize it from password_hash (if present) and do NOT purge on first-run.
+const checkPasswordIntegrity = () => {
+    try {
+        const metaPath = 'password_hash.meta'
+        const currentSig = computeHashOfFile('password_hash')
+        const metaExists = fs.existsSync(metaPath)
+        let metaSig = ''
+        if (metaExists) {
+            metaSig = fs.readFileSync(metaPath, 'utf8')
+        }
+
+        if (metaExists) {
+            // If meta exists and either the password_hash was removed or changed, purge
+            if (currentSig === '' || currentSig !== metaSig) {
+                if (fs.existsSync('keys') || fs.existsSync('encrypted') || fs.existsSync('decrypted')) {
+                    deleteAllUserData()
+                }
+                try { fs.unlinkSync(metaPath) } catch (e) {}
+            }
+        } else {
+            // Meta missing: treat as tamper -> purge everything
+            if (fs.existsSync('keys') || fs.existsSync('encrypted') || fs.existsSync('decrypted')) {
+                deleteAllUserData()
+            }
+            // ensure no stale meta is present
+            try { fs.unlinkSync(metaPath) } catch (e) {}
+        }
+    } catch (e) {
+        console.error('checkPasswordIntegrity error', e)
+    }
+}
+
+// Run integrity check now that helpers are defined
+checkPasswordIntegrity()
+
 const setPassphrase = async (event, args) => {
     const { passphrase } = args;
     const cur = await new Promise((resolve, reject) => {
@@ -804,6 +935,13 @@ const setPassphrase = async (event, args) => {
         return false;
     }
     fs.writeFileSync("password_hash", cur);
+    // write a sidecar meta file containing a signature of the password_hash contents
+    try {
+        const sig = computeHashOfFile('password_hash')
+        fs.writeFileSync('password_hash.meta', sig)
+    } catch (e) {
+        console.error('Failed to write password_hash.meta', e)
+    }
     PASSPHRASE = passphrase
     return true;
 }
