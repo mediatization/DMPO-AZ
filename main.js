@@ -197,7 +197,16 @@ ipcMain.handle("download-images", async (event, args) => {
     console.log("Number of images to download from container, " + args.hashedKey.slice(0,8) + " : " + blobs.length)
     downloader.addFilesToQueue(blobs)
     downloader.printQueue()
-    downloader.setCurrentKey(args.hashedKey.slice(0,8))
+    // set the current key and total so progress can be tracked
+    downloader.setCurrentKey(args.hashedKey.slice(0,8), blobs.length)
+    // register a progress callback that forwards progress to renderer
+    downloader.setProgressCallback((key, downloaded, total) => {
+        try {
+            win.webContents.send('download-progress', { key, downloaded, total, username: args.name || args.username })
+        } catch (e) {
+            console.error('send download-progress failed', e)
+        }
+    })
     downloader.startDownloading()
 });
 
@@ -239,8 +248,18 @@ const updateLocalFiles = async (data) => {
 }
 
 const triggerUpdateLocalFiles = async () => {
-    data = await updateLocalFiles(data)
-    win.webContents.send("update-data", data)
+    try {
+        // fetch fresh user/image data and then update local file counts
+        let d = getUserData();
+        d = await fetchData();
+        d = await updateLocalFiles(d);
+        data = d;
+        if (win && win.webContents) {
+            win.webContents.send("update-data", data)
+        }
+    } catch (e) {
+        console.error('triggerUpdateLocalFiles error', e)
+    }
 }
 
 ipcMain.handle("is-online", async (event, args) => { 
@@ -451,6 +470,13 @@ ipcMain.handle("register", async (event, args) => {
 
     decipher({ encryptedKey: encryptedKey, iv: iv.toString("hex")})
 
+    // refresh dashboard so the new user appears immediately
+    try {
+        await triggerUpdateLocalFiles()
+    } catch (e) {
+        console.error('triggerUpdateLocalFiles after register failed', e)
+    }
+
     return { encryptedKey, hashedKey, qrcode }
 })
 
@@ -474,6 +500,13 @@ ipcMain.handle("remove-user", async (event, args) => {
     const finalPath = "final/" + hashedKey.slice(0, 8) + "/"
     if (fs.existsSync(finalPath)) fs.rmdirSync(finalPath, { recursive: true });
     fs.unlinkSync("keys/" + hashedKey);
+
+    // refresh dashboard data after removal
+    try {
+        await triggerUpdateLocalFiles()
+    } catch (e) {
+        console.error('triggerUpdateLocalFiles after remove-user failed', e)
+    }
 })
 
 const deleteFiles = async (files) => (
@@ -508,9 +541,16 @@ ipcMain.handle("clear-bucket", async (event, args) => {
     })
     if (response == 0)  {
         await deleteFiles(files)
-        data = await fetchData()
-        data = updateLocalFiles(data)
-        event.sender.send("update-data", data)
+        // ensure dashboard reflects cleared bucket
+        try {
+            await triggerUpdateLocalFiles()
+        } catch (e) {
+            console.error('triggerUpdateLocalFiles after clear-bucket failed', e)
+            // fallback: compute and send once
+            data = await fetchData()
+            data = await updateLocalFiles(data)
+            event.sender.send("update-data", data)
+        }
     }
 });
 
@@ -530,11 +570,12 @@ const build = (key, args) =>
         return
     }
     // Path for Constants file
+    console.log(os.platform);
     if (os.platform === 'win32') {
         constantsPath = appPath + "\\app\\src\\main\\java\\com\\example\\screenlife2\\Constants.java";
     }
     else {
-        constantsPath = appPath + "/app/src/main/java/com/example/screenlife2/Constants.java";
+        constantsPath = appPath + "\\app\\src\\main\\java\\com\\example\\screenlife2\\Constants.java";
     }
     
     if (!fs.existsSync(constantsPath)) {
