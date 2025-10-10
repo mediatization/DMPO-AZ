@@ -39,10 +39,7 @@ let data = [];
 let win;
 let win1;
 let win2;
-// session id used to isolate ephemeral decrypted folders for this app run
-const SESSION_ID = crypto.randomBytes(8).toString('hex')
-// track ephemeral decrypted dirs: { '<prefix>': '<abs_temp_path>' }
-const ephemeralDecrypted = {}
+// (Reverted) decrypted files will be written directly into ./decrypted/<prefix>/
 
 function createWindow() {
     win = new BrowserWindow({
@@ -91,7 +88,17 @@ async function listBlobs(containerName)
 {
     var toReturn = []
     console.log("Listing blobs of container: " + containerName)
-    containerClient = blobServiceClient.getContainerClient(containerName) 
+    // If offline, don't attempt network calls
+    try {
+        if (!await isOnline()) {
+            console.log('Offline: skipping listBlobs for container', containerName)
+            return []
+        }
+    } catch (e) {
+        console.log('isOnline check failed, skipping listBlobs', e)
+        return []
+    }
+    containerClient = blobServiceClient.getContainerClient(containerName)
     exists = await containerClient.exists()
     console.log("Container " + containerName + " exists? " + exists)
     if (exists == true)
@@ -120,6 +127,7 @@ const fetchData = async (event = null) => {
     if (!res)
         return null
 
+    // For each user, attempt to list blobs only if online. If offline, return empty list for that user.
     var imageData = []
     for (ud of userData)
     {
@@ -136,21 +144,31 @@ const fetchData = async (event = null) => {
         console.log("\tiv: " + ud.iv)
 
         var toReturn = []
-        console.log("\tAccessing container " + containerName + " ...")
-        containerClient = blobServiceClient.getContainerClient(containerName)
-        exists = await containerClient.exists()
-        console.log("\tContainer " + containerName + " exists? " + exists)
-        if (exists == true)
-        {
-            for await (const blob of containerClient.listBlobsFlat({ includeMetadata: false, includeSnapshots: false, includeTags: false,
-                includeVersions: false}))
-            {
-                toReturn.push(containerClient.getBlobClient(blob.name))
+        try {
+            if (!await isOnline()) {
+                console.log('\tOffline: skipping Azure container access for', containerName)
+                imageData.push([])
+                continue
             }
-        }
-        else
-        {
-            toReturn  = []
+            console.log("\tAccessing container " + containerName + " ...")
+            containerClient = blobServiceClient.getContainerClient(containerName)
+            exists = await containerClient.exists()
+            console.log("\tContainer " + containerName + " exists? " + exists)
+            if (exists == true)
+            {
+                for await (const blob of containerClient.listBlobsFlat({ includeMetadata: false, includeSnapshots: false, includeTags: false,
+                    includeVersions: false}))
+                {
+                    toReturn.push(containerClient.getBlobClient(blob.name))
+                }
+            }
+            else
+            {
+                toReturn  = []
+            }
+        } catch (e) {
+            console.log('\tAzure access failed for container', containerName, e)
+            toReturn = []
         }
         imageData.push(toReturn);
     }
@@ -286,14 +304,17 @@ const isOnline = async () => {
 }
 
 ipcMain.handle("decrypt-for-user", async (event, args) => {
+    // Don't allow decrypt while online
     try {
         await checkInternetConnected()
         dialog.showErrorBox("Online Error", "Cannot decrypt while connected to the internet")
         decryptionQueue = []
         return;
     } catch (e) {
-        // console.error(e)
+        // offline -> proceed
     }
+
+    // Queue the decryption request and process sequentially
     decryptionQueue.push([event, args])
     if (decryptionQueue.length === 1) {
         decrypt(event, args)
@@ -301,22 +322,7 @@ ipcMain.handle("decrypt-for-user", async (event, args) => {
 });
 
 const decrypt = async (event, args) => {
-    let mIsOnline = true
-
-    try {
-        console.log("Internet test...")
-        mIsOnline = await isOnline()
-        console.log("Online?: " + mIsOnline)
-    } catch (e) {
-        console.log("await isOnline error")
-        console.error(e)
-    }
-    
-    if (mIsOnline) {
-        dialog.showErrorBox("Online Error", "Cannot decrypt while connected to the internet")
-        return;
-    }
-
+    // Proceed with decryption regardless of network status (original behavior)
     const res = await waitForPassphrase()
     if (!res)
         return
@@ -339,16 +345,9 @@ const decrypt = async (event, args) => {
     }
 
     const folderName = resolve(`./encrypted/${args.hashedKey.slice(0, 8)}/`)
-    // create ephemeral temp folder for decrypted files
+    // Reverted behavior: write decrypted files directly into ./decrypted/<prefix>/
     const prefix = args.hashedKey.slice(0, 8)
-    const destFolderName = resolve(`${os.tmpdir()}/dmpo_decrypted_${SESSION_ID}_${prefix}/`)
-    // store mapping so we can cleanup and open later
-    ephemeralDecrypted[prefix] = destFolderName
-
-    // ensure a small marker remains in ./decrypted/<prefix> so the UI can count it
-    const markerDir = resolve(`./decrypted/${prefix}/`)
-    try { fs.mkdirSync(markerDir, { recursive: true }) } catch (e) {}
-    try { fs.writeFileSync(resolve(markerDir, '.session_marker'), SESSION_ID) } catch (e) {}
+    const destFolderName = resolve(`./decrypted/${prefix}/`)
 
     if (!fs.existsSync(folderName)) {
         dialog.showErrorBox("Missing folder error", `Missing folder "${folderName}"`)
@@ -379,16 +378,7 @@ const decrypt = async (event, args) => {
 }
 
 ipcMain.handle("censor-for-user", async (event, args) => {
-
-    try {
-        await checkInternetConnected()
-        dialog.showErrorBox("Online Error", "Cannot decrypt while connected to the internet")
-        censoringQueue = []
-        return;
-    } catch (e) {
-        // console.error(e)
-    }
-
+    // Queue the censoring request (no online gating)
     censoringQueue.push(args)
     if (censoringQueue.length === 1) {
         censor(args)
@@ -439,32 +429,24 @@ ipcMain.handle("open-in-explorer", async (event, args) => {
 
 })
 
-// Open ephemeral decrypted folder for a user prefix (if available), otherwise open the marker folder
+// Open decrypted folder for a user prefix
 ipcMain.handle("open-decrypted", async (event, args) => {
     const prefix = args.prefix || args
-    const ephemeral = ephemeralDecrypted[prefix]
-    if (ephemeral && fs.existsSync(ephemeral)) {
-        return shell.openPath(ephemeral)
-    }
-    // fallback: open the marker folder under ./decrypted
-    const markerDir = resolve(`./decrypted/${prefix}/`)
-    if (fs.existsSync(markerDir)) return shell.openPath(markerDir)
+    const dir = resolve(`./decrypted/${prefix}/`)
+    if (fs.existsSync(dir)) return shell.openPath(dir)
     return null
 })
 
-// cleanup ephemeral directories and markers on quit/crash
+// Clear out decrypted folder contents on quit/crash so decrypted files only persist while app is open
 const cleanupEphemeral = () => {
     try {
-        Object.keys(ephemeralDecrypted).forEach(prefix => {
-            const p = ephemeralDecrypted[prefix]
-            try { fs.rmdirSync(p, { recursive: true }) } catch (e) {}
-            const markerDir = resolve(`./decrypted/${prefix}/`)
-            try { fs.unlinkSync(resolve(markerDir, '.session_marker')) } catch (e) {}
-            // if marker dir is empty, remove it
-            try {
-                const files = fs.readdirSync(markerDir)
-                if (files.length === 0) fs.rmdirSync(markerDir)
-            } catch (e) {}
+        const base = resolve('./decrypted/')
+        if (!fs.existsSync(base)) return
+        fs.readdirSync(base, { withFileTypes: true }).forEach(d => {
+            if (d.isDirectory()) {
+                const p = resolve(base, d.name)
+                try { fs.rmdirSync(p, { recursive: true }) } catch (e) {}
+            }
         })
     } catch (e) {
         console.error('cleanupEphemeral error', e)
@@ -767,7 +749,7 @@ ipcMain.handle("check-passphrase", async (event, args) => {
             else
             {
                 console.log("No passphrase file")
-                const newPass = setPassphrase(event, args)
+                const newPass = await setPassphrase(event, args)
                 if (newPass)
                 {
                     console.log("check-passphrase returned true")
@@ -907,12 +889,16 @@ const checkPasswordIntegrity = () => {
                 try { fs.unlinkSync(metaPath) } catch (e) {}
             }
         } else {
-            // Meta missing: treat as tamper -> purge everything
-            if (fs.existsSync('keys') || fs.existsSync('encrypted') || fs.existsSync('decrypted')) {
-                deleteAllUserData()
+            // Meta missing: if password_hash exists, initialize meta; if password_hash also missing, purge
+            if (currentSig !== '') {
+                // initialize meta from existing password_hash
+                try { fs.writeFileSync(metaPath, currentSig) } catch (e) { console.error('Failed to initialize password_hash.meta', e) }
+            } else {
+                // both meta and password_hash missing -> purge
+                if (fs.existsSync('keys') || fs.existsSync('encrypted') || fs.existsSync('decrypted')) {
+                    deleteAllUserData()
+                }
             }
-            // ensure no stale meta is present
-            try { fs.unlinkSync(metaPath) } catch (e) {}
         }
     } catch (e) {
         console.error('checkPasswordIntegrity error', e)
