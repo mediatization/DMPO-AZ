@@ -1,7 +1,5 @@
 const electron = require('electron');
 
-document.getElementById("testDiv").appendChild(document.createTextNode("hello world"));
-
 const register = async () => {
     const name = document.getElementById("part-id").value;
     if (name == "") return;
