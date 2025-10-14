@@ -6,7 +6,7 @@ async function performOCR(imagePath) {
 
   //const worker = await createWorker(`C:\\Users\\cellaz\\Documents\\GitHub\\DMPO-AZ\\imageAnalysis\\eng.traineddata`);
   
-  const worker = await createWorker("eng", 1, {
+  const worker = await createWorker({
     //temporary solution, eventually do this without absolute paths
     workerPath: path.join(__dirname, '../node_modules/tesseract.js/dist/worker.min.js'),
     corePath: path.join(__dirname, '../node_modules/tesseract.js-core/'),
@@ -17,6 +17,10 @@ async function performOCR(imagePath) {
     workerBlobURL: false
   });
   
+  await worker.load();
+  await worker.loadLanguage('eng');
+  await worker.initialize('eng');
+
   const { data: { text } } = await worker.recognize(imagePath);
   console.log(text);
   await worker.terminate();
