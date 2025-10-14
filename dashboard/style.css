@@ -13,6 +13,7 @@ td {
     /* border: 1px solid darkgray; */
     border-collapse: collapse;
     text-align: left;
+    box-sizing: border-box; /* ensure padding doesn't change column widths */
 }
 /* thead styles removed (not needed) */
 /* table thead {
@@ -95,7 +96,7 @@ button {
     bottom: 0px;
     left: 0px;
     right: 0px;
-    overflow: auto;
+    overflow: hidden; /* wrapper (.tableFixHead) handles scrolling now */
 }
 .number {
     text-align: right;
@@ -108,18 +109,75 @@ p {
     margin-left: 14px;
 }
 .time-label {
-    width: 100px;
-}
-.username-label {
     width: 120px;
 }
 .username-label {
-    width: 120px;
+    width: 180px;
+}
+.username-label {
+    width: 180px;
 }
 /* progress bar styles */
 .progress-cell {
-    width: 140px;
+    width: 160px;
 }
+
+/* explicit column widths by nth-child to guarantee header/body alignment */
+/* adjust these values if you need different ratios */
+/* Allow columns to size to the largest content by using table-layout: auto */
+/* The .tableFixHead element is a scrollable wrapper; the inner table will auto-size */
+
+.tableFixHead {
+    width: 100%;
+    max-height: 100%;
+    overflow: auto; /* allow both horizontal and vertical scrolling */
+    position: relative;
+    box-sizing: border-box; /* ensure padding reserved inside wrapper */
+}
+
+.tableFixHead > table {
+    table-layout: fixed; /* use fixed layout so explicit widths are respected */
+    width: 100%;
+}
+
+/* per-action column widths (use class names so presence/absence of optional columns doesn't shift alignment) */
+/* single actions column (merged header and per-row actions) */
+.username-label { width: 150px; }
+.progress-cell { width: 80px; }
+.time-label { width: 120px; }
+.number { width: 80px; }
+
+/* spacer column should be small; wrapper padding reserves space for actions */
+.spacer { width: 80px; min-width: 80px; }
+
+/* actions column on the right */
+/* actions column sits at the right as a normal column (not overlay/sticky) so it doesn't white-out the chart */
+.actions-col { width: 200px; background: white; z-index: 20; }
+.actions-col .button { display: inline-block; margin: 4px 6px; }
+
+/* avoid truncation for numeric columns by giving them a larger min-width */
+.number { min-width: 80px; padding-right: 8px; }
+.downloaded-col { min-width: 180px; width: 180px; }
+
+/* Make the Downloaded header left-aligned but keep the cell values right-aligned */
+.tableFixHead thead th.downloaded-col { text-align: left; }
+.data-table td.downloaded-col { text-align: right; }
+
+/* ensure the inner table stretches to the wrapper width so content reaches the window edge */
+.tableFixHead > table { width: 100%; }
+
+/* make headers sticky within the scrollable wrapper */
+.tableFixHead thead th {
+    position: sticky;
+    top: 0;
+    z-index: 150; /* above most content so headers remain visible */
+    background: white;
+    -webkit-box-shadow: 0px 1px 3px 0px rgba(0, 0, 0, 0.08);
+    box-shadow: 0px 1px 3px 0px rgba(0, 0, 0, 0.08);
+}
+
+/* removed the 100% spacer override so spacer stays small */
+
 .progress-outer {
     width: 100%;
     height: 6px;
@@ -149,41 +207,9 @@ p {
 .clickable:active {
     color: rgb(2, 37, 58);
 }
-.tableFixHead {
-    display: block;
-    width: 100%;
-    max-height: calc(100% - 36px);
-}
-.tableFixHead thead {
-    display: table;
-    width: 100%;
-    table-layout: fixed;
-}
-.tableFixHead thead {
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    background-color: white; /* ensure header covers scrolling content beneath */
-}
-.tableFixHead tbody {
-    display: block;
-    width: 100%;
-    max-height: calc(100% - 36px);
-    overflow-y: auto;
-}
-.tableFixHead tbody tr {
-    display: table;
-    table-layout: fixed;
-    width: 100%;
-}
-.tableFixHead thead th {
-    position: sticky;
-    top: 0;
-    background-color: white;
-    -webkit-box-shadow: 0px 1px 3px 0px rgba(0, 0, 0, 0.1);
-    -moz-box-shadow: 0px 1px 3px 0px rgba(0, 0, 0, 0.1);
-    box-shadow: 0px 1px 3px 0px rgba(0, 0, 0, 0.1);
-}
+/* header styling for sticky headers (kept earlier near the .tableFixHead wrapper rules) */
+
+/* tbody and tr use normal table layout; no special rules required */
 #online-warning {
     background-color: rgb(209, 49, 49);
     border-radius: 6px;
