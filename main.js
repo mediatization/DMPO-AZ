@@ -88,18 +88,14 @@ async function listBlobs(containerName)
 {
     var toReturn = []
     console.log("Listing blobs of container: " + containerName)
-    // If offline, don't attempt network calls
+    // Attempt listing; handle network/Azure errors gracefully.
     try {
-        if (!await isOnline()) {
-            console.log('Offline: skipping listBlobs for container', containerName)
-            return []
-        }
+        containerClient = blobServiceClient.getContainerClient(containerName)
+        exists = await containerClient.exists()
     } catch (e) {
-        console.log('isOnline check failed, skipping listBlobs', e)
+        console.log('Azure listing failed for container', containerName, e)
         return []
     }
-    containerClient = blobServiceClient.getContainerClient(containerName)
-    exists = await containerClient.exists()
     console.log("Container " + containerName + " exists? " + exists)
     if (exists == true)
     {
@@ -145,11 +141,6 @@ const fetchData = async (event = null) => {
 
         var toReturn = []
         try {
-            if (!await isOnline()) {
-                console.log('\tOffline: skipping Azure container access for', containerName)
-                imageData.push([])
-                continue
-            }
             console.log("\tAccessing container " + containerName + " ...")
             containerClient = blobServiceClient.getContainerClient(containerName)
             exists = await containerClient.exists()
@@ -167,6 +158,7 @@ const fetchData = async (event = null) => {
                 toReturn  = []
             }
         } catch (e) {
+            // Network or Azure errors will be handled here; don't treat transient offline as permanent.
             console.log('\tAzure access failed for container', containerName, e)
             toReturn = []
         }
@@ -637,44 +629,69 @@ const build = (key, args) =>
             const projectDir = appPath
             const buildType = 'debug'
             const destinationDir = './apk_output/' + args.hashedKey.slice(0,8)
-            // For mac, this needs to be assembleDebug for some reason
-            const gradlew = process.platform === 'win32' ? '.\\gradlew.bat' : './gradlew assembleDebug';
+            // Run gradle with explicit assemble task for both platforms
+            const gradleCmd = process.platform === 'win32' ? '.\\gradlew.bat assembleDebug' : './gradlew assembleDebug';
             const apkPath = path.join(projectDir, 'app', 'build', 'outputs', 'apk', buildType, `app-${buildType}.apk`);
             const destPath = path.join(destinationDir, `app-${buildType}-${args.hashedKey.slice(0,8)}.apk`);
 
-            fs.chmod(path.join(projectDir, "gradlew"), 0o775, (err) =>
-            {
-                if (err) throw err;
-                console.log("The permissions for gradle were changed")
-            })
+            // Try to make gradlew executable on *nix (non-fatal)
+            const gradlewLocal = path.join(projectDir, 'gradlew')
+            if (process.platform !== 'win32' && fs.existsSync(gradlewLocal)) {
+                fs.chmod(gradlewLocal, 0o775, (err) => {
+                    if (err) console.warn('chmod gradlew failed (non-fatal):', err.message)
+                    else console.log('The permissions for gradle were changed')
+                })
+            }
 
-            // Step 1: Run Gradle build
-            console.log(`Running: ${gradlew}`);
-            exec(gradlew, { cwd: projectDir }, (error, stdout, stderr) => {
+            // Step 1: Run Gradle build (increase maxBuffer to avoid truncation)
+            console.log(`Running: ${gradleCmd}`);
+            exec(gradleCmd, { cwd: projectDir, maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
                 if (error) {
-                console.error('Gradle build failed:', stderr);
-                win.webContents.send("build-notif-failure")
-                return;
+                    console.error('Gradle build failed:', stderr || error.message);
+                    win.webContents.send("build-notif-failure")
+                    return;
                 }
-                else
-                {
-                    console.log('Build complete! Looking for APK at:', apkPath);
 
-                    // Step 2: Check for APK
-                    if (!fs.existsSync(apkPath)) {
-                        console.error('APK not found:', apkPath);
-                        win.webContents.send("build-notif-failure")
-                    }
-                    else
-                    {
-                        // Step 3: Ensure destination exists
-                        fs.mkdirSync(destinationDir, { recursive: true });
+                console.log('Build process finished. Verifying APK output...')
 
-                        // Step 4: Copy APK
-                        fs.copyFileSync(apkPath, destPath);
-                        console.log('APK copied to:', destPath);
-                        win.webContents.send("build-notif-success")
+                // Primary expected path
+                let finalApk = fs.existsSync(apkPath) ? apkPath : null
+
+                // Fallback: scan outputs folder for any .apk and pick newest
+                if (!finalApk) {
+                    const outputsDir = path.join(projectDir, 'app', 'build', 'outputs', 'apk')
+                    if (fs.existsSync(outputsDir)) {
+                        const found = []
+                        const walk = (dir) => {
+                            const entries = fs.readdirSync(dir, { withFileTypes: true })
+                            for (const ent of entries) {
+                                const p = path.join(dir, ent.name)
+                                if (ent.isDirectory()) walk(p)
+                                else if (ent.isFile() && p.endsWith('.apk')) found.push(p)
+                            }
+                        }
+                        walk(outputsDir)
+                        if (found.length > 0) {
+                            found.sort((a,b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)
+                            finalApk = found[0]
+                        }
                     }
+                }
+
+                if (!finalApk) {
+                    console.error('APK not found (checked expected locations).')
+                    win.webContents.send("build-notif-failure")
+                    return
+                }
+
+                try {
+                    fs.mkdirSync(destinationDir, { recursive: true });
+                    fs.copyFileSync(finalApk, destPath);
+                    console.log('APK copied to:', destPath);
+                    win.webContents.send("build-notif-success")
+                } catch (copyErr) {
+                    console.error('Failed to copy APK:', copyErr)
+                    win.webContents.send("build-notif-failure")
                 }
             });
         }
