@@ -3,24 +3,25 @@ table {
     cursor: default;
     table-layout: fixed;
 }
+/* compact base sizing */
+body {
+    font-size: 13px;
+}
 table,
 th,
 td {
     /* border: 1px solid darkgray; */
     border-collapse: collapse;
     text-align: left;
+    box-sizing: border-box; /* ensure padding doesn't change column widths */
 }
-thead {
-    /* border-bottom-color: lightgray;
-      border-bottom-style: solid;
-      border-bottom-width: 1px; */
-}
+/* thead styles removed (not needed) */
 /* table thead {
       position: fixed;
     } */
 td,
 th {
-    padding: 12px 14px;
+    padding: 6px 8px;
     font-weight: normal;
     border-bottom-style: dashed;
     border-bottom-color: rgb(246, 246, 246);
@@ -28,6 +29,9 @@ th {
     border-right-style: dashed;
     border-right-color: rgb(246, 246, 246);
     border-right-width: 1px;
+    vertical-align: middle;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 td:last-child,
 th:last-child {
@@ -41,15 +45,21 @@ thead > tr:hover {
     background-color: unset;
 }
 
-tr .default-hidden {
+tbody tr .default-hidden {
     opacity: 0%;
 }
-tr:hover .default-hidden {
+tbody tr:hover .default-hidden {
     opacity: 100%;
+}
+
+/* fix row height so participant rows don't stretch vertically */
+tbody tr {
+    height: 30px;
+    max-height: 30px;
 }
 /* tr:nth-child(even) {background-color: #f2f2f2;} */
 button {
-    margin: 10px;
+    margin: 4px 6px;
 }
 .title-bar {
     display: flex;
@@ -58,17 +68,20 @@ button {
     background-color: white;
     position: fixed;
     width: 98%;
-    height: 44px;
+    height: 36px;
 }
 .button {
     display: inline-block;
     cursor: pointer;
     border-radius: 5px;
-    margin-left: 8px;
-    margin-right: 8px;
+    margin-left: 6px;
+    margin-right: 6px;
     color: gray;
     -moz-user-select: none;
     -webkit-user-select: none;
+    user-select: none;
+    font-size: 12px;
+    padding: 3px 6px;
     /* background-color: rgb(82, 206, 119); */
 }
 .button:hover {
@@ -79,15 +92,15 @@ button {
 }
 #main {
     position: fixed;
-    top: 40px;
+    top: 36px;
     bottom: 0px;
     left: 0px;
     right: 0px;
-    overflow: auto;
+    overflow: hidden; /* wrapper (.tableFixHead) handles scrolling now */
 }
 .number {
     text-align: right;
-    width: 110px;
+    width: 90px;
 }
 p {
     margin: 0px;
@@ -99,10 +112,125 @@ p {
     width: 120px;
 }
 .username-label {
-    width: 150;
+    width: 180px;
 }
 .username-label {
-    width: 150px;
+    width: 180px;
+}
+/* progress bar styles */
+.progress-cell {
+    width: 170px; /* increased to absorb former spacer (90 + ~80) */
+    min-width: 120px;
+}
+
+/* make the inner progress bar a fixed pixel width so it doesn't expand the column
+   when the .progress-text is present */
+.progress-outer {
+    width: 120px; /* fixed bar width increased to match larger column */
+    height: 6px;
+    background: #eee;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-right: 6px;
+    display: inline-block; /* keep bar and text on same line */
+    vertical-align: middle;
+}
+.progress-inner {
+    height: 100%;
+    background: linear-gradient(90deg, #60b7e9, #3aa0d6);
+    width: 0%;
+    transition: width 150ms linear;
+}
+.progress-text {
+    display: inline-block;
+    font-size: 11px;
+    color: #333;
+    margin-left: 8px;
+    max-width: 40px; /* keep text compact */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+/* header progress label should match the cell width to keep alignment */
+.progress-label { width: 170px; }
+
+/* explicit column widths by nth-child to guarantee header/body alignment */
+/* adjust these values if you need different ratios */
+/* Allow columns to size to the largest content by using table-layout: auto */
+/* The .tableFixHead element is a scrollable wrapper; the inner table will auto-size */
+
+.tableFixHead {
+    width: 100%;
+    max-height: 100%;
+    overflow: auto; /* allow both horizontal and vertical scrolling */
+    position: relative;
+    box-sizing: border-box; /* ensure padding reserved inside wrapper */
+}
+
+.tableFixHead > table {
+    table-layout: fixed; /* use fixed layout so explicit widths are respected */
+    width: 100%;
+}
+
+/* per-action column widths (use class names so presence/absence of optional columns doesn't shift alignment) */
+/* single actions column (merged header and per-row actions) */
+.username-label { width: 150px; }
+.progress-cell { width: 90px; }
+.time-label { width: 120px; }
+.number { width: 80px; }
+
+/* spacer column should be small; wrapper padding reserves space for actions */
+.spacer { width: 80px; min-width: 80px; }
+
+/* actions column on the right */
+/* actions column sits at the right as a normal column (not overlay/sticky) so it doesn't white-out the chart */
+.actions-col { width: 280px; background: white; z-index: 20; }
+.actions-col .button { display: inline-block; margin: 4px 6px; }
+
+/* avoid truncation for numeric columns by giving them a larger min-width */
+.number { min-width: 80px; padding-right: 8px; }
+.downloaded-col { min-width: 140px; width: 140px; }
+
+/* Make the Downloaded header left-aligned but keep the cell values right-aligned */
+.tableFixHead thead th.downloaded-col { text-align: right; padding-right: 12px; }
+.data-table td.downloaded-col { text-align: right; padding-right: 12px; }
+
+/* ensure the inner table stretches to the wrapper width so content reaches the window edge */
+.tableFixHead > table { width: 100%; }
+
+/* make headers sticky within the scrollable wrapper */
+.tableFixHead thead th {
+    position: sticky;
+    top: 0;
+    z-index: 150; /* above most content so headers remain visible */
+    background: white;
+    -webkit-box-shadow: 0px 1px 3px 0px rgba(0, 0, 0, 0.08);
+    box-shadow: 0px 1px 3px 0px rgba(0, 0, 0, 0.08);
+}
+
+/* removed the 100% spacer override so spacer stays small */
+
+.progress-outer {
+    width: 100%;
+    height: 6px;
+    background: #eee;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-right: 8px;
+}
+.progress-inner {
+    height: 100%;
+    background: linear-gradient(90deg, #60b7e9, #3aa0d6);
+    width: 0%;
+    transition: width 150ms linear;
+}
+.progress-text {
+    display: inline-block;
+    font-size: 11px;
+    color: #333;
+    margin-left: 6px;
 }
 .clickable {
     cursor: pointer;
@@ -113,18 +241,9 @@ p {
 .clickable:active {
     color: rgb(2, 37, 58);
 }
-.tableFixHead {
-    overflow-y: auto;
-    height: 100px;
-}
-.tableFixHead thead th {
-    position: sticky;
-    top: 0;
-    background-color: white;
-    -webkit-box-shadow: 0px 1px 3px 0px rgba(0, 0, 0, 0.1);
-    -moz-box-shadow: 0px 1px 3px 0px rgba(0, 0, 0, 0.1);
-    box-shadow: 0px 1px 3px 0px rgba(0, 0, 0, 0.1);
-}
+/* header styling for sticky headers (kept earlier near the .tableFixHead wrapper rules) */
+
+/* tbody and tr use normal table layout; no special rules required */
 #online-warning {
     background-color: rgb(209, 49, 49);
     border-radius: 6px;

@@ -6,6 +6,7 @@ const checkInternetConnected = require('check-internet-connected');
 const bcrypt = require('bcryptjs');
 const os = require('os');
 const { Downloader } = require("./downloader");
+const crypto = require('crypto');
 
 let decryptionQueue = []
 let censoringQueue = []
@@ -38,6 +39,7 @@ let data = [];
 let win;
 let win1;
 let win2;
+// (Reverted) decrypted files will be written directly into ./decrypted/<prefix>/
 
 function createWindow() {
     win = new BrowserWindow({
@@ -62,6 +64,7 @@ function createWindow() {
 
 app.whenReady().then(createWindow);
 
+
 app.on("window-all-closed", () => {
     if (process.platform !== "darwin") {
         app.quit();
@@ -85,8 +88,14 @@ async function listBlobs(containerName)
 {
     var toReturn = []
     console.log("Listing blobs of container: " + containerName)
-    containerClient = blobServiceClient.getContainerClient(containerName) 
-    exists = await containerClient.exists()
+    // Attempt listing; handle network/Azure errors gracefully.
+    try {
+        containerClient = blobServiceClient.getContainerClient(containerName)
+        exists = await containerClient.exists()
+    } catch (e) {
+        console.log('Azure listing failed for container', containerName, e)
+        return []
+    }
     console.log("Container " + containerName + " exists? " + exists)
     if (exists == true)
     {
@@ -114,6 +123,7 @@ const fetchData = async (event = null) => {
     if (!res)
         return null
 
+    // For each user, attempt to list blobs only if online. If offline, return empty list for that user.
     var imageData = []
     for (ud of userData)
     {
@@ -130,21 +140,27 @@ const fetchData = async (event = null) => {
         console.log("\tiv: " + ud.iv)
 
         var toReturn = []
-        console.log("\tAccessing container " + containerName + " ...")
-        containerClient = blobServiceClient.getContainerClient(containerName)
-        exists = await containerClient.exists()
-        console.log("\tContainer " + containerName + " exists? " + exists)
-        if (exists == true)
-        {
-            for await (const blob of containerClient.listBlobsFlat({ includeMetadata: false, includeSnapshots: false, includeTags: false,
-                includeVersions: false}))
+        try {
+            console.log("\tAccessing container " + containerName + " ...")
+            containerClient = blobServiceClient.getContainerClient(containerName)
+            exists = await containerClient.exists()
+            console.log("\tContainer " + containerName + " exists? " + exists)
+            if (exists == true)
             {
-                toReturn.push(containerClient.getBlobClient(blob.name))
+                for await (const blob of containerClient.listBlobsFlat({ includeMetadata: false, includeSnapshots: false, includeTags: false,
+                    includeVersions: false}))
+                {
+                    toReturn.push(containerClient.getBlobClient(blob.name))
+                }
             }
-        }
-        else
-        {
-            toReturn  = []
+            else
+            {
+                toReturn  = []
+            }
+        } catch (e) {
+            // Network or Azure errors will be handled here; don't treat transient offline as permanent.
+            console.log('\tAzure access failed for container', containerName, e)
+            toReturn = []
         }
         imageData.push(toReturn);
     }
@@ -197,7 +213,16 @@ ipcMain.handle("download-images", async (event, args) => {
     console.log("Number of images to download from container, " + args.hashedKey.slice(0,8) + " : " + blobs.length)
     downloader.addFilesToQueue(blobs)
     downloader.printQueue()
-    downloader.setCurrentKey(args.hashedKey.slice(0,8))
+    // set the current key and total so progress can be tracked
+    downloader.setCurrentKey(args.hashedKey.slice(0,8), blobs.length)
+    // register a progress callback that forwards progress to renderer
+    downloader.setProgressCallback((key, downloaded, total) => {
+        try {
+            win.webContents.send('download-progress', { key, downloaded, total, username: args.name || args.username })
+        } catch (e) {
+            console.error('send download-progress failed', e)
+        }
+    })
     downloader.startDownloading()
 });
 
@@ -239,8 +264,18 @@ const updateLocalFiles = async (data) => {
 }
 
 const triggerUpdateLocalFiles = async () => {
-    data = await updateLocalFiles(data)
-    win.webContents.send("update-data", data)
+    try {
+        // fetch fresh user/image data and then update local file counts
+        let d = getUserData();
+        d = await fetchData();
+        d = await updateLocalFiles(d);
+        data = d;
+        if (win && win.webContents) {
+            win.webContents.send("update-data", data)
+        }
+    } catch (e) {
+        console.error('triggerUpdateLocalFiles error', e)
+    }
 }
 
 ipcMain.handle("is-online", async (event, args) => { 
@@ -261,14 +296,17 @@ const isOnline = async () => {
 }
 
 ipcMain.handle("decrypt-for-user", async (event, args) => {
+    // Don't allow decrypt while online
     try {
         await checkInternetConnected()
         dialog.showErrorBox("Online Error", "Cannot decrypt while connected to the internet")
         decryptionQueue = []
         return;
     } catch (e) {
-        // console.error(e)
+        // offline -> proceed
     }
+
+    // Queue the decryption request and process sequentially
     decryptionQueue.push([event, args])
     if (decryptionQueue.length === 1) {
         decrypt(event, args)
@@ -276,22 +314,7 @@ ipcMain.handle("decrypt-for-user", async (event, args) => {
 });
 
 const decrypt = async (event, args) => {
-    let mIsOnline = true
-
-    try {
-        console.log("Internet test...")
-        mIsOnline = await isOnline()
-        console.log("Online?: " + mIsOnline)
-    } catch (e) {
-        console.log("await isOnline error")
-        console.error(e)
-    }
-    
-    if (mIsOnline) {
-        dialog.showErrorBox("Online Error", "Cannot decrypt while connected to the internet")
-        return;
-    }
-
+    // Proceed with decryption regardless of network status (original behavior)
     const res = await waitForPassphrase()
     if (!res)
         return
@@ -314,7 +337,9 @@ const decrypt = async (event, args) => {
     }
 
     const folderName = resolve(`./encrypted/${args.hashedKey.slice(0, 8)}/`)
-    const destFolderName = resolve(`./decrypted/${args.hashedKey.slice(0, 8)}/`)
+    // Reverted behavior: write decrypted files directly into ./decrypted/<prefix>/
+    const prefix = args.hashedKey.slice(0, 8)
+    const destFolderName = resolve(`./decrypted/${prefix}/`)
 
     if (!fs.existsSync(folderName)) {
         dialog.showErrorBox("Missing folder error", `Missing folder "${folderName}"`)
@@ -345,16 +370,7 @@ const decrypt = async (event, args) => {
 }
 
 ipcMain.handle("censor-for-user", async (event, args) => {
-
-    try {
-        await checkInternetConnected()
-        dialog.showErrorBox("Online Error", "Cannot decrypt while connected to the internet")
-        censoringQueue = []
-        return;
-    } catch (e) {
-        // console.error(e)
-    }
-
+    // Queue the censoring request (no online gating)
     censoringQueue.push(args)
     if (censoringQueue.length === 1) {
         censor(args)
@@ -405,8 +421,38 @@ ipcMain.handle("open-in-explorer", async (event, args) => {
 
 })
 
+// Open decrypted folder for a user prefix
+ipcMain.handle("open-decrypted", async (event, args) => {
+    const prefix = args.prefix || args
+    const dir = resolve(`./decrypted/${prefix}/`)
+    if (fs.existsSync(dir)) return shell.openPath(dir)
+    return null
+})
+
+// Clear out decrypted folder contents on quit/crash so decrypted files only persist while app is open
+const cleanupEphemeral = () => {
+    try {
+        const base = resolve('./decrypted/')
+        if (!fs.existsSync(base)) return
+        fs.readdirSync(base, { withFileTypes: true }).forEach(d => {
+            if (d.isDirectory()) {
+                const p = resolve(base, d.name)
+                try { fs.rmdirSync(p, { recursive: true }) } catch (e) {}
+            }
+        })
+    } catch (e) {
+        console.error('cleanupEphemeral error', e)
+    }
+}
+
+app.on('before-quit', () => {
+    cleanupEphemeral()
+})
+
+process.on('SIGINT', () => { cleanupEphemeral(); process.exit(0) })
+process.on('uncaughtException', (err) => { console.error('uncaughtException', err); cleanupEphemeral(); process.exit(1) })
+
 const QRCode = require("qrcode")
-const crypto = require("crypto");
 
 ipcMain.handle("open-image-analysis", async (event, args) => {
     const res = await waitForPassphrase()
@@ -469,6 +515,13 @@ ipcMain.handle("register", async (event, args) => {
 
     decipher({ encryptedKey: encryptedKey, iv: iv.toString("hex")})
 
+    // refresh dashboard so the new user appears immediately
+    try {
+        await triggerUpdateLocalFiles()
+    } catch (e) {
+        console.error('triggerUpdateLocalFiles after register failed', e)
+    }
+
     return { encryptedKey, hashedKey, qrcode }
 })
 
@@ -492,6 +545,13 @@ ipcMain.handle("remove-user", async (event, args) => {
     const finalPath = "final/" + hashedKey.slice(0, 8) + "/"
     if (fs.existsSync(finalPath)) fs.rmdirSync(finalPath, { recursive: true });
     fs.unlinkSync("keys/" + hashedKey);
+
+    // refresh dashboard data after removal
+    try {
+        await triggerUpdateLocalFiles()
+    } catch (e) {
+        console.error('triggerUpdateLocalFiles after remove-user failed', e)
+    }
 })
 
 const deleteFiles = async (files) => (
@@ -526,9 +586,16 @@ ipcMain.handle("clear-bucket", async (event, args) => {
     })
     if (response == 0)  {
         await deleteFiles(files)
-        data = await fetchData()
-        data = updateLocalFiles(data)
-        event.sender.send("update-data", data)
+        // ensure dashboard reflects cleared bucket
+        try {
+            await triggerUpdateLocalFiles()
+        } catch (e) {
+            console.error('triggerUpdateLocalFiles after clear-bucket failed', e)
+            // fallback: compute and send once
+            data = await fetchData()
+            data = await updateLocalFiles(data)
+            event.sender.send("update-data", data)
+        }
     }
 });
 
@@ -548,11 +615,12 @@ const build = (key, args) =>
         return
     }
     // Path for Constants file
+    console.log(os.platform);
     if (os.platform === 'win32') {
         constantsPath = appPath + "\\app\\src\\main\\java\\com\\example\\screenlife2\\Constants.java";
     }
     else {
-        constantsPath = appPath + "/app/src/main/java/com/example/screenlife2/Constants.java";
+        constantsPath = appPath + "\\app\\src\\main\\java\\com\\example\\screenlife2\\Constants.java";
     }
     
     if (!fs.existsSync(constantsPath)) {
@@ -579,44 +647,69 @@ const build = (key, args) =>
             const projectDir = appPath
             const buildType = 'debug'
             const destinationDir = './apk_output/' + args.hashedKey.slice(0,8)
-            // For mac, this needs to be assembleDebug for some reason
-            const gradlew = process.platform === 'win32' ? '.\\gradlew.bat' : './gradlew assembleDebug';
+            // Run gradle with explicit assemble task for both platforms
+            const gradleCmd = process.platform === 'win32' ? '.\\gradlew.bat assembleDebug' : './gradlew assembleDebug';
             const apkPath = path.join(projectDir, 'app', 'build', 'outputs', 'apk', buildType, `app-${buildType}.apk`);
             const destPath = path.join(destinationDir, `app-${buildType}-${args.hashedKey.slice(0,8)}.apk`);
 
-            fs.chmod(path.join(projectDir, "gradlew"), 0o775, (err) =>
-            {
-                if (err) throw err;
-                console.log("The permissions for gradle were changed")
-            })
+            // Try to make gradlew executable on *nix (non-fatal)
+            const gradlewLocal = path.join(projectDir, 'gradlew')
+            if (process.platform !== 'win32' && fs.existsSync(gradlewLocal)) {
+                fs.chmod(gradlewLocal, 0o775, (err) => {
+                    if (err) console.warn('chmod gradlew failed (non-fatal):', err.message)
+                    else console.log('The permissions for gradle were changed')
+                })
+            }
 
-            // Step 1: Run Gradle build
-            console.log(`Running: ${gradlew}`);
-            exec(gradlew, { cwd: projectDir }, (error, stdout, stderr) => {
+            // Step 1: Run Gradle build (increase maxBuffer to avoid truncation)
+            console.log(`Running: ${gradleCmd}`);
+            exec(gradleCmd, { cwd: projectDir, maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
                 if (error) {
-                console.error('Gradle build failed:', stderr);
-                win.webContents.send("build-notif-failure")
-                return;
+                    console.error('Gradle build failed:', stderr || error.message);
+                    win.webContents.send("build-notif-failure")
+                    return;
                 }
-                else
-                {
-                    console.log('Build complete! Looking for APK at:', apkPath);
 
-                    // Step 2: Check for APK
-                    if (!fs.existsSync(apkPath)) {
-                        console.error('APK not found:', apkPath);
-                        win.webContents.send("build-notif-failure")
-                    }
-                    else
-                    {
-                        // Step 3: Ensure destination exists
-                        fs.mkdirSync(destinationDir, { recursive: true });
+                console.log('Build process finished. Verifying APK output...')
 
-                        // Step 4: Copy APK
-                        fs.copyFileSync(apkPath, destPath);
-                        console.log('APK copied to:', destPath);
-                        win.webContents.send("build-notif-success")
+                // Primary expected path
+                let finalApk = fs.existsSync(apkPath) ? apkPath : null
+
+                // Fallback: scan outputs folder for any .apk and pick newest
+                if (!finalApk) {
+                    const outputsDir = path.join(projectDir, 'app', 'build', 'outputs', 'apk')
+                    if (fs.existsSync(outputsDir)) {
+                        const found = []
+                        const walk = (dir) => {
+                            const entries = fs.readdirSync(dir, { withFileTypes: true })
+                            for (const ent of entries) {
+                                const p = path.join(dir, ent.name)
+                                if (ent.isDirectory()) walk(p)
+                                else if (ent.isFile() && p.endsWith('.apk')) found.push(p)
+                            }
+                        }
+                        walk(outputsDir)
+                        if (found.length > 0) {
+                            found.sort((a,b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)
+                            finalApk = found[0]
+                        }
                     }
+                }
+
+                if (!finalApk) {
+                    console.error('APK not found (checked expected locations).')
+                    win.webContents.send("build-notif-failure")
+                    return
+                }
+
+                try {
+                    fs.mkdirSync(destinationDir, { recursive: true });
+                    fs.copyFileSync(finalApk, destPath);
+                    console.log('APK copied to:', destPath);
+                    win.webContents.send("build-notif-success")
+                } catch (copyErr) {
+                    console.error('Failed to copy APK:', copyErr)
+                    win.webContents.send("build-notif-failure")
                 }
             });
         }
@@ -691,7 +784,7 @@ ipcMain.handle("check-passphrase", async (event, args) => {
             else
             {
                 console.log("No passphrase file")
-                const newPass = setPassphrase(event, args)
+                const newPass = await setPassphrase(event, args)
                 if (newPass)
                 {
                     console.log("check-passphrase returned true")
@@ -768,6 +861,88 @@ const loadPassphrase = async () =>
     })
 }
 
+// Compute a simple integrity signature (sha256 of the password_hash contents)
+const computeHashOfFile = (filePath) => {
+    try {
+        if (!fs.existsSync(filePath)) return "";
+        const v = fs.readFileSync(filePath, 'utf8')
+        const h = crypto.createHash('sha256')
+        h.update(v)
+        return h.digest('hex')
+    }
+    catch (e) {
+        console.error('computeHashOfFile error', e)
+        return ""
+    }
+}
+
+// Delete all user-related local data: keys and local folders storing images
+const deleteAllUserData = () => {
+    console.log('Deleting all user keys and local data due to password_hash change or removal')
+    try {
+        if (fs.existsSync('keys')) {
+            fs.readdirSync('keys').forEach(f => {
+                try { fs.unlinkSync(`keys/${f}`) } catch (e) {}
+            })
+            try { fs.rmdirSync('keys') } catch (e) {}
+        }
+
+        const folders = ['encrypted','decrypted','cleaned_automated','final','apk_output']
+        folders.forEach(folder => {
+            if (fs.existsSync(folder)) {
+                fs.readdirSync(folder).forEach(sub => {
+                    const p = `${folder}/${sub}`
+                    try { fs.rmdirSync(p, { recursive: true }) } catch (e) {}
+                })
+            }
+        })
+    } catch (e) {
+        console.error('deleteAllUserData error', e)
+    }
+}
+
+// Check integrity of password_hash against a sidecar file 'password_hash.meta'.
+// Behavior:
+// - If meta exists: enforce it. If password_hash is removed or its contents differ -> purge and remove meta.
+// - If meta does NOT exist: initialize it from password_hash (if present) and do NOT purge on first-run.
+const checkPasswordIntegrity = () => {
+    try {
+        const metaPath = 'password_hash.meta'
+        const currentSig = computeHashOfFile('password_hash')
+        const metaExists = fs.existsSync(metaPath)
+        let metaSig = ''
+        if (metaExists) {
+            metaSig = fs.readFileSync(metaPath, 'utf8')
+        }
+
+        if (metaExists) {
+            // If meta exists and either the password_hash was removed or changed, purge
+            if (currentSig === '' || currentSig !== metaSig) {
+                if (fs.existsSync('keys') || fs.existsSync('encrypted') || fs.existsSync('decrypted')) {
+                    deleteAllUserData()
+                }
+                try { fs.unlinkSync(metaPath) } catch (e) {}
+            }
+        } else {
+            // Meta missing: if password_hash exists, initialize meta; if password_hash also missing, purge
+            if (currentSig !== '') {
+                // initialize meta from existing password_hash
+                try { fs.writeFileSync(metaPath, currentSig) } catch (e) { console.error('Failed to initialize password_hash.meta', e) }
+            } else {
+                // both meta and password_hash missing -> purge
+                if (fs.existsSync('keys') || fs.existsSync('encrypted') || fs.existsSync('decrypted')) {
+                    deleteAllUserData()
+                }
+            }
+        }
+    } catch (e) {
+        console.error('checkPasswordIntegrity error', e)
+    }
+}
+
+// Run integrity check now that helpers are defined
+checkPasswordIntegrity()
+
 const setPassphrase = async (event, args) => {
     const { passphrase } = args;
     const cur = await new Promise((resolve, reject) => {
@@ -781,6 +956,13 @@ const setPassphrase = async (event, args) => {
         return false;
     }
     fs.writeFileSync("password_hash", cur);
+    // write a sidecar meta file containing a signature of the password_hash contents
+    try {
+        const sig = computeHashOfFile('password_hash')
+        fs.writeFileSync('password_hash.meta', sig)
+    } catch (e) {
+        console.error('Failed to write password_hash.meta', e)
+    }
     PASSPHRASE = passphrase
     return true;
 }
