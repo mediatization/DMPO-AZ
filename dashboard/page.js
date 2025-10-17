@@ -207,10 +207,7 @@ function render() {
     // }
     // buttonBox.appendChild(button)
 
-    // spacer column to push actions to the right
-    const spacerHeader = createNode("th", "")
-    spacerHeader.className = 'spacer'
-    header.appendChild(spacerHeader)
+    // append actions header directly (spacer removed to give space to progress)
     header.appendChild(actionsHeader)
     // remaining action header columns (Decrypt, Censor (optional), Remove, Clear)
     // single actions header now covers per-row action buttons
@@ -279,9 +276,7 @@ function render() {
 
     // removed censored and final columns (not present in original layout)
 
-    // spacer TD to push actions toward the right
-    const spacerTd = createNode("td", null, "spacer")
-    tr.appendChild(spacerTd)
+    // spacer removed; actions column appended directly
 
         // combined per-row actions column (Download, Build, Decrypt, optional Censor, Remove, Clear)
         const actionsTd = createNode("td", null, "actions-col")

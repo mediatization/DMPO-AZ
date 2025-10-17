@@ -21,7 +21,7 @@ td {
     } */
 td,
 th {
-    padding: 8px 10px;
+    padding: 6px 8px;
     font-weight: normal;
     border-bottom-style: dashed;
     border-bottom-color: rgb(246, 246, 246);
@@ -54,12 +54,12 @@ tbody tr:hover .default-hidden {
 
 /* fix row height so participant rows don't stretch vertically */
 tbody tr {
-    height: 36px;
-    max-height: 36px;
+    height: 30px;
+    max-height: 30px;
 }
 /* tr:nth-child(even) {background-color: #f2f2f2;} */
 button {
-    margin: 10px;
+    margin: 4px 6px;
 }
 .title-bar {
     display: flex;
@@ -119,8 +119,42 @@ p {
 }
 /* progress bar styles */
 .progress-cell {
-    width: 160px;
+    width: 170px; /* increased to absorb former spacer (90 + ~80) */
+    min-width: 120px;
 }
+
+/* make the inner progress bar a fixed pixel width so it doesn't expand the column
+   when the .progress-text is present */
+.progress-outer {
+    width: 120px; /* fixed bar width increased to match larger column */
+    height: 6px;
+    background: #eee;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-right: 6px;
+    display: inline-block; /* keep bar and text on same line */
+    vertical-align: middle;
+}
+.progress-inner {
+    height: 100%;
+    background: linear-gradient(90deg, #60b7e9, #3aa0d6);
+    width: 0%;
+    transition: width 150ms linear;
+}
+.progress-text {
+    display: inline-block;
+    font-size: 11px;
+    color: #333;
+    margin-left: 8px;
+    max-width: 40px; /* keep text compact */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+/* header progress label should match the cell width to keep alignment */
+.progress-label { width: 170px; }
 
 /* explicit column widths by nth-child to guarantee header/body alignment */
 /* adjust these values if you need different ratios */
@@ -143,7 +177,7 @@ p {
 /* per-action column widths (use class names so presence/absence of optional columns doesn't shift alignment) */
 /* single actions column (merged header and per-row actions) */
 .username-label { width: 150px; }
-.progress-cell { width: 80px; }
+.progress-cell { width: 90px; }
 .time-label { width: 120px; }
 .number { width: 80px; }
 
@@ -152,16 +186,16 @@ p {
 
 /* actions column on the right */
 /* actions column sits at the right as a normal column (not overlay/sticky) so it doesn't white-out the chart */
-.actions-col { width: 200px; background: white; z-index: 20; }
+.actions-col { width: 280px; background: white; z-index: 20; }
 .actions-col .button { display: inline-block; margin: 4px 6px; }
 
 /* avoid truncation for numeric columns by giving them a larger min-width */
 .number { min-width: 80px; padding-right: 8px; }
-.downloaded-col { min-width: 180px; width: 180px; }
+.downloaded-col { min-width: 140px; width: 140px; }
 
 /* Make the Downloaded header left-aligned but keep the cell values right-aligned */
-.tableFixHead thead th.downloaded-col { text-align: left; }
-.data-table td.downloaded-col { text-align: right; }
+.tableFixHead thead th.downloaded-col { text-align: right; padding-right: 12px; }
+.data-table td.downloaded-col { text-align: right; padding-right: 12px; }
 
 /* ensure the inner table stretches to the wrapper width so content reaches the window edge */
 .tableFixHead > table { width: 100%; }
