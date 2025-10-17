@@ -14,38 +14,68 @@
 
         <script type="module">
 
-            const worker = await Tesseract.createWorker("eng", 1, {
-                workerPath: "../node_modules/tesseract.js/dist/worker.min.js",
-                // Unlike when used in a browser, corePath and langPath are resolved relative the worker using Electron.
-                corePath: "../node_modules/tesseract.js-core/",
-                langPath: "./",
-                logger: m => console.log(m),
-                // Disable gzip since the eng.traineddata file we are using is already uncompressed
-                gzip: false,
-                workerBlobURL: false
-            });
+            const imgMap = new Map();
+            //list of common words that we wont want to search through, may want to expand at some point
+            const prepositions = new Set(["about", "above", "across", "after", "against", "along", "among", "around", "before",
+            "behind", "below", "beneath", "beside", "between", "beyond", "despite", "down", "during", "except", 
+            "for", "from", "inside", "into", "like", "near", "off", "onto", "opposite", "out", "outside",
+            "over", "past", "round", "since", "than", "through", "toward", "under", "underneath", "unlike",
+            "until", "upon", "via", "with", "within", "without"]);
 
-            (async () => {
-                const { data: { text } } = await worker.recognize("./testocr.png");
-                console.log(text);
-                await worker.terminate();
-            })();
-
-            async function performOCR(imagePath) {
-                const { data: { text } } = await worker.recognize(imagePath);
-                console.log(text);
-                await worker.terminate();
-            }
-            const webUtils = require('electron').remote.require('./webUtils.js');
+            // const webUtils = require('electron').remote.require('./webUtils.js');
             document.getElementById("imageSelector").addEventListener("change", (event) => {
+                
                 const fileList = event.target.files; 
+                //passing the relevant data to an async function for actual processing
+                performOCR(fileList);
 
-                for (const file of fileList) {
-                const filePath = webUtils.getPathForFile(file);
-                console.log(file, filePath, __dirname);
-                performOCR(filePath);
-                }
             });
+
+            async function performOCR(fileList) {
+                
+                //making the ocr worker
+                const worker = await Tesseract.createWorker("eng", 1, {
+                    workerPath: "../node_modules/tesseract.js/dist/worker.min.js",
+                    corePath: "../node_modules/tesseract.js-core/",
+                    langPath: "./",
+                    logger: m => console.log(m),
+                    // Disable gzip since the eng.traineddata file we are using is already uncompressed
+                    gzip: false,
+                    workerBlobURL: false
+                });
+
+                //iterating through our files
+                for (const file of fileList) {
+                    //running ocr on the image
+                    const { data: { text } } = await worker.recognize(file.path);
+                    
+                    
+
+                    //for all the words we found in the ocr, adding 
+                    const words = text.split(/\s+/);
+                    console.log(text, words);
+                    for (let word of words) {
+                        word = word.toLowerCase();
+                        if (word in prepositions || word.length < 4) {
+                            continue;
+                        }
+
+                        if (imgMap.has(word)) {
+                            let arr = imgMap.get(word).add(file.path);
+                        }
+                        else {
+                            imgMap.set(word, new Set([file.path]));
+                        }
+                    }
+
+                }
+                
+                //terminating the worker
+                await worker.terminate();
+
+                console.log(imgMap);
+            }
+
         </script>
 
         <div>
@@ -64,5 +94,5 @@
 
         <div id="testDiv" style="display: flex; flex-direction: column;"></div>
     </body>
-    <!-- <script src="./imageAnalysis.js"></script> -->
+    <!-- <script src="./imageAnalysis.js" type="module"></script> -->
 </html>
