@@ -157,7 +157,7 @@ function render() {
     mainBody.textContent = ""
 
     const table = document.createElement("table")
-    table.className = "tableFixHead"
+    table.className = "data-table"
 
     const headerContainer = document.createElement("thead")
     const header = document.createElement("tr")
@@ -165,14 +165,14 @@ function render() {
     header.appendChild(createNode("th", "Progress", "progress-label"))
     header.appendChild(createNode("th", "Last Capture", "time-label"))
     header.appendChild(createNode("th", "In Bucket", "number"))
-    header.appendChild(createNode("th", "Downloaded", "number"))
+    header.appendChild(createNode("th", "Downloaded", "number downloaded-col"))
     header.appendChild(createNode("th", "Decrypted", "number"))
-    if (canCensor) header.appendChild(createNode("th", "Censored(A)", "number"))
 
-    const buttonBox = createNode("th", "")
-
-    let button = createNode("p", "Download All", "button default-hidden")
-    button.onclick = async () => {
+    // Combined header for batch actions (Download All + Build All)
+    const actionsHeader = createNode("th", "")
+    actionsHeader.className = 'actions-col'
+    const downloadAllBtn = createNode("p", "Download All", "button default-hidden")
+    downloadAllBtn.onclick = async () => {
         console.log("downloading all")
         try {
             const promises = data.map(user => ipcRenderer.invoke("download-images", user))
@@ -182,14 +182,11 @@ function render() {
             console.error('download all failed', err)
             setDownloadNotif('Download All: Failed', 6000)
         } finally {
-            // refresh data so UI stays up to date after downloads
             ipcRenderer.invoke("fetch-data", { full: true })
         }
     }
-    buttonBox.appendChild(button)
-
-    let button2 = createNode("p", "Build All", "button default-hidden")
-    button2.onclick = async() => {
+    const buildAllBtn = createNode("p", "Build All", "button default-hidden")
+    buildAllBtn.onclick = async() => {
         console.log("building all")
         let askForPassphrase = true 
         data.forEach(user => {
@@ -197,7 +194,8 @@ function render() {
             askForPassphrase = false
         })
     }
-    buttonBox.appendChild(button2)
+    actionsHeader.appendChild(downloadAllBtn)
+    actionsHeader.appendChild(buildAllBtn)
 
 
     // button = createNode("p", `Decrypt${ canCensor ? ' and Censor All' : ''}`, "button default-hidden")
@@ -209,7 +207,11 @@ function render() {
     // }
     // buttonBox.appendChild(button)
 
-    header.appendChild(buttonBox)
+    // append actions header directly (spacer removed to give space to progress)
+    header.appendChild(actionsHeader)
+    // remaining action header columns (Decrypt, Censor (optional), Remove, Clear)
+    // single actions header now covers per-row action buttons
+    // (per-row actions will be merged into a single td)
 
     headerContainer.appendChild(header)
     table.appendChild(headerContainer)
@@ -218,13 +220,13 @@ function render() {
     for (let user of data) {
         const tr = document.createElement("tr")
 
-        // username
-        tr.appendChild(createNode("td", user.name))
+    // username
+    tr.appendChild(createNode("td", user.name, "username-label"))
 
         // progress cell: show progress bar if present for this user's key
         const keyPrefix = user.hashedKey ? user.hashedKey.slice(0,8) : (user.username || '')
-        const progCell = document.createElement('td')
-        progCell.className = 'progress-cell'
+    const progCell = document.createElement('td')
+    progCell.className = 'progress-cell'
         const progData = downloadProgress[keyPrefix]
         if (progData && progData.total > 0) {
             const percent = Math.round((progData.downloaded / progData.total) * 100)
@@ -247,43 +249,41 @@ function render() {
         console.log('timSince', user)
         const timeLabel = createNode("td", user.lastImageAddedOn == "N.A." ? "" : user.timeSince, "time-label")
         timeLabel.onmouseenter = () => {
-            timeLabel.textContent = user.lastImageAddedOn == "N.A." ? "" : user.lastImageAddedOn
+            if (user.lastImageAddedOn && user.lastImageAddedOn !== "N.A.") {
+                timeLabel.textContent = user.lastImageAddedOn
+            }
         }
         timeLabel.onmouseleave = () => {
-            timeLabel.textContent = user.timeSince
+            // only reset to timeSince if there was a timeSince value
+            if (user.timeSince) timeLabel.textContent = user.timeSince
         }
         timeLabel.style = "width: 140px;"
         tr.appendChild(timeLabel)
 
-        tr.appendChild(createNode("td", user.numberInBucket == 0 ? "" : user.numberInBucket, "number"))
+    tr.appendChild(createNode("td", user.numberInBucket == 0 ? "" : user.numberInBucket, "number"))
         
-        const downloadedCount = createNode("td", user.downloadedCount == 0 ? "" : user.downloadedCount, "number clickable")
+    const downloadedCount = createNode("td", user.downloadedCount == 0 ? "" : user.downloadedCount, "number clickable downloaded-col")
         downloadedCount.onclick = () => {
             ipcRenderer.invoke("open-in-explorer", "./encrypted/" + user.hashedKey.slice(0, 8))
         }
         tr.appendChild(downloadedCount)
 
-        const decryptedCount = createNode("td", user.decryptedCount == 0 ? "" : user.decryptedCount, "number clickable")
+    const decryptedCount = createNode("td", user.decryptedCount == 0 ? "" : user.decryptedCount, "number clickable")
         decryptedCount.onclick = () => {
-            ipcRenderer.invoke("open-in-explorer", "./decrypted/" + user.hashedKey.slice(0, 8))
+            ipcRenderer.invoke("open-decrypted", { prefix: user.hashedKey.slice(0, 8) })
         }
         tr.appendChild(decryptedCount)
 
-        const aCensoredCount = createNode("td", user.cleanedAutomatedCount == 0 ? "" : user.cleanedAutomatedCount, "number clickable")
-        aCensoredCount.onclick = () => {
-            ipcRenderer.invoke("open-in-explorer", "./cleaned_automated/" + user.hashedKey.slice(0, 8))
-        }
-        tr.appendChild(aCensoredCount)
+    // removed censored and final columns (not present in original layout)
 
-        const finalCount = createNode("td", user.finalCount == 0 ? "" : user.finalCount, "number clickable")
-        finalCount.onclick = () => {
-            ipcRenderer.invoke("open-in-explorer", "./final/" + user.username)
-        }
-        tr.appendChild(finalCount)
+    // spacer removed; actions column appended directly
 
-        const actionContainer = createNode("td")
-        let button = createNode("p", "Download", "button default-hidden")
-        button.onclick = async () => {
+        // combined per-row actions column (Download, Build, Decrypt, optional Censor, Remove, Clear)
+        const actionsTd = createNode("td", null, "actions-col")
+
+        // Download
+        let dlBtn = createNode("p", "Download", "button default-hidden")
+        dlBtn.onclick = async () => {
             console.log("downloading")
             try {
                 await ipcRenderer.invoke("download-images", user)
@@ -292,61 +292,68 @@ function render() {
                 console.error('download failed for user', user, err)
                 setDownloadNotif(`${user.name}: Download Failed`, 6000)
             } finally {
-                // refresh data so UI stays up to date after download
                 ipcRenderer.invoke("fetch-data", { full: true })
             }
         }
-        actionContainer.appendChild(button)
+        actionsTd.appendChild(dlBtn)
 
-        button = createNode("p", "Decrypt", "button default-hidden")
-        button.onclick = () => {
-            console.log("decrypting user")
-            ipcRenderer.invoke("decrypt-for-user", user)
-        }
-
-        actionContainer.appendChild(button)
-
-        button = createNode("p", "Build", "button default-hidden")
-        button.onclick = () => {
+        // Build
+        let buildBtn = createNode("p", "Build", "button default-hidden")
+        buildBtn.onclick = () => {
             console.log("building for user")
             ipcRenderer.invoke("build-for-user", user, true)
         }
-        
-        actionContainer.appendChild(button)
+        actionsTd.appendChild(buildBtn)
 
+        // Decrypt
+        let decBtn = createNode("p", "Decrypt", "button default-hidden")
+        decBtn.onclick = () => {
+            console.log("decrypting user")
+            ipcRenderer.invoke("decrypt-for-user", user)
+        }
+        actionsTd.appendChild(decBtn)
+
+        // Censor (optional)
         if (canCensor) {
-            button = createNode("p", "Censor", "button default-hidden")
-            button.onclick = () => {
+            let cBtn = createNode("p", "Censor", "button default-hidden")
+            cBtn.onclick = () => {
                 ipcRenderer.invoke("censor-for-user", user)
             }
-            actionContainer.appendChild(button)
+            actionsTd.appendChild(cBtn)
         }
 
-        button = createNode("p", "Remove", "button default-hidden")
-        button.onclick = async () => {
+        // Remove
+        let removeBtn = createNode("p", "Remove", "button default-hidden")
+        removeBtn.onclick = async () => {
             try {
                 await ipcRenderer.invoke("remove-user", user)
             } catch (e) { console.error('remove-user failed', e) }
             ipcRenderer.invoke("fetch-data", { full: true })
         }
-        actionContainer.appendChild(button)
+        actionsTd.appendChild(removeBtn)
 
-        button = createNode("p", "Clear Bucket", "button default-hidden")
-        button.onclick = async () => {
+        // Clear Bucket
+        let clearBtn = createNode("p", "Clear Bucket", "button default-hidden")
+        clearBtn.onclick = async () => {
             console.log("clearing bucket")
             try {
                 await ipcRenderer.invoke("clear-bucket", user)
             } catch (e) { console.error('clear-bucket failed', e) }
             ipcRenderer.invoke("fetch-data", { full: true })
         }
-        actionContainer.appendChild(button)
+        actionsTd.appendChild(clearBtn)
 
-        tr.appendChild(actionContainer)
+        tr.appendChild(actionsTd)
         tableBody.appendChild(tr)
     }
 
     table.appendChild(tableBody)
-    mainBody.appendChild(table)
+
+    // wrap table in a scrollable container so the table can auto-size to content
+    const wrapper = document.createElement('div')
+    wrapper.className = 'tableFixHead'
+    wrapper.appendChild(table)
+    mainBody.appendChild(wrapper)
 }
 
 main()
