@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Image Detail</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="page-header">
+        <h1 id="title">Image Detail</h1>
+        <p class="muted"><a href="./imageAnalysis.html">← Back to images</a></p>
+      </header>
+
+      <main style="margin-top:12px">
+        <div id="detailWrap" style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+          <div style="flex:1 1 600px;">
+            <img id="fullImage" src="" alt="Full image" style="max-width:100%;border:1px solid #e6e9ee;border-radius:6px" />
+          </div>
+          <aside style="width:320px;background:#fff;border:1px solid #e6e9ee;padding:12px;border-radius:6px">
+            <h3>Metadata</h3>
+            <dl id="metaList"></dl>
+          </aside>
+        </div>
+      </main>
+    </div>
+    <script type="module" src="./imageDetail.js"></script>
+  </body>
+</html>

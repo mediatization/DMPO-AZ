@@ -12,226 +12,76 @@
     <link rel="stylesheet" href="./style.css">
     <body id="body">
 
-        <script type="module">
+        <div class="container">
+            <header class="page-header">
+                <h1>Image Analysis (UI Prototype)</h1>
+                <p class="muted">Using dummy data. Backend integration will be wired later.</p>
+            </header>
 
-            const imgMap = new Map();
-            //list of common words that we wont want to search through, may want to expand at some point
-            const prepositions = new Set(["about", "above", "across", "after", "against", "along", "among", "around", "before",
-            "behind", "below", "beneath", "beside", "between", "beyond", "despite", "down", "during", "except", 
-            "for", "from", "inside", "into", "like", "near", "off", "onto", "opposite", "out", "outside",
-            "over", "past", "round", "since", "than", "through", "toward", "under", "underneath", "unlike",
-            "until", "upon", "via", "with", "within", "without"]);
+            <section class="main-grid">
+                <aside class="left-panel" aria-label="Advanced search">
+                    <div class="control-group">
+                        <div id="counts" style="margin-bottom:8px">
+                            <div><strong>Registered:</strong> <span id="registeredCount">0</span></div>
+                            <div><strong>Results:</strong> <span id="resultsCount">0</span></div>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <label for="keywordsInput">Keywords (OCR)</label>
+                        <input id="keywordsInput" type="search" placeholder="Enter keywords (comma or space separated)" />
+                    </div>
 
-            // const webUtils = require('electron').remote.require('./webUtils.js');
-            document.getElementById("imageSelector").addEventListener("change", (event) => {
-                
-                const fileList = event.target.files; 
-                //passing the relevant data to an async function for actual processing
-                performOCR(fileList);
+                    <div class="control-group">
+                        <label for="keywordMode">Match mode</label>
+                        <select id="keywordMode" aria-label="Match mode">
+                            <option value="AND">AND (all keywords)</option>
+                            <option value="OR">OR (any keyword)</option>
+                        </select>
+                    </div>
 
-            });
+                    <div class="control-group">
+                        <label for="startDate">Start date</label>
+                        <input id="startDate" type="date" />
+                    </div>
 
-            async function performOCR(fileList) {
-                
-                //making the ocr worker
-                const worker = await Tesseract.createWorker("eng", 1, {
-                    workerPath: "../node_modules/tesseract.js/dist/worker.min.js",
-                    corePath: "../node_modules/tesseract.js-core/",
-                    langPath: "./",
-                    logger: m => console.log(m),
-                    // Disable gzip since the eng.traineddata file we are using is already uncompressed
-                    gzip: false,
-                    workerBlobURL: false
-                });
+                    <div class="control-group">
+                        <label for="endDate">End date</label>
+                        <input id="endDate" type="date" />
+                    </div>
 
-                //iterating through our files
-                for (const file of fileList) {
-                    //running ocr on the image
-                    const { data: { text } } = await worker.recognize(file.path);
-                    
-                    //for all the words we found in the ocr, adding to our imgMap
-                    //splitting words by new lines and by spaces
-                    const words = text.split(/\s+/); 
-                    console.log(text, words);
-                    for (let word of words) {
-                        word = word.toLowerCase();
+                    <div class="control-group">
+                        <label for="userInput">User</label>
+                        <input id="userInput" type="text" placeholder="username" />
+                    </div>
 
-                        if (prepositions.has(word) || word.length < 4) {
-                            continue;
-                        }
+                    <div class="control-group small" style="display:flex;gap:8px">
+                        <button id="searchBtn">Search</button>
+                        <button id="clearFilters">Clear filters</button>
+                    </div>
+                </aside>
 
-                        if (imgMap.has(word)) {
-                            let arr = imgMap.get(word).add(file.path);
-                        }
-                        else {
-                            imgMap.set(word, new Set([file.path]));
-                        }
-                    }
+                <main class="right-panel">
+                    <div class="table-wrap">
+                        <table class="image-table" aria-label="Images table">
+                            <thead>
+                                    <tr>
+                                        <th>Preview</th>
+                                        <th>Timestamp</th>
+                                        <th>User</th>
+                                        <th>Keywords</th>
+                                    </tr>
+                            </thead>
+                            <tbody id="imageTableBody">
+                                <!-- rows rendered by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </main>
+            </section>
 
-                }
-                
-                //terminating the worker
-                await worker.terminate();
-
-                console.log(imgMap);
-                await saveImageMap();
-            }
-            
-            async function saveImageMap() {
-
-                // Convert the Map to a plain JavaScript object, converting Sets to arrays
-                const obj = {};
-                for (const [key, value] of imgMap.entries()) {
-                    if (value instanceof Set) {
-                        obj[key] = Array.from(value);
-                    } else {
-                        // Fallback: convert other iterable values to arrays
-                        obj[key] = Array.from(value || []);
-                    }
-                }
-
-                // Convert the object to a JSON string
-                const jsonString = JSON.stringify(obj);
-
-                console.log(jsonString);
-
-                // Convert the JSON string to a binary string (if needed elsewhere)
-                let binaryString = '';
-                for (let i = 0; i < jsonString.length; i++) {
-                    const charCode = jsonString.charCodeAt(i);
-                    // Convert character code to 8-bit binary, padding with leading zeros
-                    binaryString += charCode.toString(2).padStart(8, '0');
-                }
-
-                console.log(binaryString);
-
-                // Try to save the JSON bytes to disk (preferred) using Node fs in Electron
-                try {
-                    const fs = window && window.require ? window.require('fs') : null;
-                    const pathMod = window && window.require ? window.require('path') : null;
-                    const os = window && window.require ? window.require('os') : null;
-                    if (fs && pathMod && os) {
-                        const defaultPath = pathMod.join(os.homedir(), 'imageMap.json');
-                        await saveImageMapToFile(defaultPath, jsonString);
-                        console.log('Saved image map to', defaultPath);
-                    } else {
-                        console.log('fs not available; skipping automatic save to disk.');
-                    }
-                } catch (err) {
-                    console.error('Error saving image map to disk:', err);
-                }
-            }
-
-            // Save a bit-string (binaryString: '010101...') to disk, or trigger a download if fs is absent.
-            async function saveBitStringToFile(filepath, binaryString) {
-                // Convert bit-string to bytes
-                const bytes = [];
-                for (let i = 0; i < binaryString.length; i += 8) {
-                    const byteStr = binaryString.slice(i, i + 8).padEnd(8, '0');
-                    bytes.push(parseInt(byteStr, 2));
-                }
-                // Use Node fs if available
-                if (window && window.require) {
-                    const fs = window.require('fs');
-                    await fs.promises.writeFile(filepath, Buffer.from(bytes));
-                } else {
-                    // Fallback: create a blob and download
-                    const blob = new Blob([new Uint8Array(bytes)], { type: 'application/octet-stream' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = filepath || 'imageMap.bin';
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                    URL.revokeObjectURL(url);
-                }
-            }
-
-            // Save a JSON string to disk as UTF-8 (preferred). If fs is not available, download it.
-            async function saveImageMapToFile(filepath, jsonString) {
-                const encoder = new TextEncoder();
-                const bytes = encoder.encode(jsonString);
-                if (window && window.require) {
-                    const fs = window.require('fs');
-                    await fs.promises.writeFile(filepath, Buffer.from(bytes));
-                } else {
-                    const blob = new Blob([bytes], { type: 'application/json;charset=utf-8' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = filepath || 'imageMap.json';
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                    URL.revokeObjectURL(url);
-                }
-            }
-
-            // Load a binary file from disk and rehydrate imgMap. Supports files written as UTF-8 JSON
-            // or files written as a bit-string saved as raw bytes.
-            async function loadImageMapFromBinaryFile(filepath) {
-                let buffer;
-                if (window && window.require) {
-                    const fs = window.require('fs');
-                    buffer = await fs.promises.readFile(filepath);
-                } else {
-                    throw new Error('fs not available in this environment');
-                }
-
-                // Try to decode as UTF-8 JSON first
-                try {
-                    const decoder = new TextDecoder();
-                    const jsonString = decoder.decode(buffer);
-                    const obj = JSON.parse(jsonString);
-                    // Rehydrate into imgMap (Map<string, Set<string>>)
-                    imgMap.clear();
-                    for (const key of Object.keys(obj)) {
-                        const arr = Array.isArray(obj[key]) ? obj[key] : [];
-                        imgMap.set(key, new Set(arr));
-                    }
-                    return imgMap;
-                } catch (err) {
-                    // If decode/parse failed, treat file as raw bit-by-bit saved bytes and convert
-                    // to a bit string then to JSON string
-                    let bitString = '';
-                    for (let i = 0; i < buffer.length; i++) {
-                        bitString += buffer[i].toString(2).padStart(8, '0');
-                    }
-                    // Convert bitString back to characters
-                    let jsonChars = [];
-                    for (let i = 0; i < bitString.length; i += 8) {
-                        const byte = bitString.slice(i, i + 8);
-                        const code = parseInt(byte, 2);
-                        jsonChars.push(String.fromCharCode(code));
-                    }
-                    const jsonString = jsonChars.join('');
-                    const obj = JSON.parse(jsonString);
-                    imgMap.clear();
-                    for (const key of Object.keys(obj)) {
-                        const arr = Array.isArray(obj[key]) ? obj[key] : [];
-                        imgMap.set(key, new Set(arr));
-                    }
-                    return imgMap;
-                }
-            }
-        </script>
-
-        <div>
-            <h1>Process Images</h1>
-            <label for="imageSelector">Choose images: </label>
-            <input type="file" id="imageSelector" multiple>
+            <!-- Image preview opens in its own page (imageDetail.html?id=...) to compartmentalize future features -->
         </div>
 
-        <hr>
-
-        <div>
-            <h1>Search Images</h1>
-            <label for="imgSearch">Search through processed images</label> 
-            <input type="search" id="imgSearch"> 
-        </div>
-
-        <div id="testDiv" style="display: flex; flex-direction: column;"></div>
     </body>
-    <script src="./imageAnalysis.js"></script>
+    <script type="module" src="./imageAnalysis-ui.js"></script>
 </html>
