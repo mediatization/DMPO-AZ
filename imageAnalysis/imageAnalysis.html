@@ -14,7 +14,11 @@
 
         <script type="module">
 
-            const imgMap = new Map();
+            const sqlite3 = require('sqlite3').verbose();
+            const db = new sqlite3.Database(':memory:');
+            db.run("CREATE TABLE IF NOT EXISTS Images (imgId INT PRIMARY KEY, imgPath VARCHAR(1024) NOT NULL UNIQUE)");
+            db.run("CREATE TABLE IF NOT EXISTS ImageWords (imgId INT NOT NULL, word VARCHAR(64) NOT NULL, PRIMARY KEY(imgId, word), FOREIGN KEY (imgId) REFERENCES Images(imgId))");
+
             //list of common words that we wont want to search through, may want to expand at some point
             const prepositions = new Set(["about", "above", "across", "after", "against", "along", "among", "around", "before",
             "behind", "below", "beneath", "beside", "between", "beyond", "despite", "down", "during", "except", 
@@ -43,177 +47,50 @@
                     gzip: false,
                     workerBlobURL: false
                 });
+                
+                //for now this will just be an int starting at zero, eventually will need to replace
+                //with a query that grabs the max id from the database
+                let nextId = 0;
 
                 //iterating through our files
                 for (const file of fileList) {
+                    //adding file to the database
+                    nextId++;
+                    db.run(`INSERT INTO Images (imgId, imgPath) VALUES (?, ?)`, [nextId, file.path]);
+
                     //running ocr on the image
                     const { data: { text } } = await worker.recognize(file.path);
                     
-                    //for all the words we found in the ocr, adding to our imgMap
+                    //for all the words we found in the ocr, adding to our img database
                     //splitting words by new lines and by spaces
                     const words = text.split(/\s+/); 
-                    console.log(text, words);
                     for (let word of words) {
                         word = word.toLowerCase();
-
+                        
                         if (prepositions.has(word) || word.length < 4) {
                             continue;
                         }
 
-                        if (imgMap.has(word)) {
-                            let arr = imgMap.get(word).add(file.path);
-                        }
-                        else {
-                            imgMap.set(word, new Set([file.path]));
-                        }
-                    }
+                        //adding to our database
+                        db.run(`INSERT INTO ImageWords (imgId, word) VALUES (?, ?)`, [nextId, word], (err) => {
+                            if(err) {
+                                console.log("duplicate word?");
+                            }
+                        });
 
+                    }
                 }
                 
                 //terminating the worker
                 await worker.terminate();
 
-                console.log(imgMap);
-                await saveImageMap();
-            }
-            
-            async function saveImageMap() {
+                db.each("SELECT imgId, imgPath FROM Images", (err, row) => {
+                    console.log("Row info:", row);    
+                });
 
-                // Convert the Map to a plain JavaScript object, converting Sets to arrays
-                const obj = {};
-                for (const [key, value] of imgMap.entries()) {
-                    if (value instanceof Set) {
-                        obj[key] = Array.from(value);
-                    } else {
-                        // Fallback: convert other iterable values to arrays
-                        obj[key] = Array.from(value || []);
-                    }
-                }
-
-                // Convert the object to a JSON string
-                const jsonString = JSON.stringify(obj);
-
-                console.log(jsonString);
-
-                // Convert the JSON string to a binary string (if needed elsewhere)
-                let binaryString = '';
-                for (let i = 0; i < jsonString.length; i++) {
-                    const charCode = jsonString.charCodeAt(i);
-                    // Convert character code to 8-bit binary, padding with leading zeros
-                    binaryString += charCode.toString(2).padStart(8, '0');
-                }
-
-                console.log(binaryString);
-
-                // Try to save the JSON bytes to disk (preferred) using Node fs in Electron
-                try {
-                    const fs = window && window.require ? window.require('fs') : null;
-                    const pathMod = window && window.require ? window.require('path') : null;
-                    const os = window && window.require ? window.require('os') : null;
-                    if (fs && pathMod && os) {
-                        const defaultPath = pathMod.join(os.homedir(), 'imageMap.json');
-                        await saveImageMapToFile(defaultPath, jsonString);
-                        console.log('Saved image map to', defaultPath);
-                    } else {
-                        console.log('fs not available; skipping automatic save to disk.');
-                    }
-                } catch (err) {
-                    console.error('Error saving image map to disk:', err);
-                }
-            }
-
-            // Save a bit-string (binaryString: '010101...') to disk, or trigger a download if fs is absent.
-            async function saveBitStringToFile(filepath, binaryString) {
-                // Convert bit-string to bytes
-                const bytes = [];
-                for (let i = 0; i < binaryString.length; i += 8) {
-                    const byteStr = binaryString.slice(i, i + 8).padEnd(8, '0');
-                    bytes.push(parseInt(byteStr, 2));
-                }
-                // Use Node fs if available
-                if (window && window.require) {
-                    const fs = window.require('fs');
-                    await fs.promises.writeFile(filepath, Buffer.from(bytes));
-                } else {
-                    // Fallback: create a blob and download
-                    const blob = new Blob([new Uint8Array(bytes)], { type: 'application/octet-stream' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = filepath || 'imageMap.bin';
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                    URL.revokeObjectURL(url);
-                }
-            }
-
-            // Save a JSON string to disk as UTF-8 (preferred). If fs is not available, download it.
-            async function saveImageMapToFile(filepath, jsonString) {
-                const encoder = new TextEncoder();
-                const bytes = encoder.encode(jsonString);
-                if (window && window.require) {
-                    const fs = window.require('fs');
-                    await fs.promises.writeFile(filepath, Buffer.from(bytes));
-                } else {
-                    const blob = new Blob([bytes], { type: 'application/json;charset=utf-8' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = filepath || 'imageMap.json';
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                    URL.revokeObjectURL(url);
-                }
-            }
-
-            // Load a binary file from disk and rehydrate imgMap. Supports files written as UTF-8 JSON
-            // or files written as a bit-string saved as raw bytes.
-            async function loadImageMapFromBinaryFile(filepath) {
-                let buffer;
-                if (window && window.require) {
-                    const fs = window.require('fs');
-                    buffer = await fs.promises.readFile(filepath);
-                } else {
-                    throw new Error('fs not available in this environment');
-                }
-
-                // Try to decode as UTF-8 JSON first
-                try {
-                    const decoder = new TextDecoder();
-                    const jsonString = decoder.decode(buffer);
-                    const obj = JSON.parse(jsonString);
-                    // Rehydrate into imgMap (Map<string, Set<string>>)
-                    imgMap.clear();
-                    for (const key of Object.keys(obj)) {
-                        const arr = Array.isArray(obj[key]) ? obj[key] : [];
-                        imgMap.set(key, new Set(arr));
-                    }
-                    return imgMap;
-                } catch (err) {
-                    // If decode/parse failed, treat file as raw bit-by-bit saved bytes and convert
-                    // to a bit string then to JSON string
-                    let bitString = '';
-                    for (let i = 0; i < buffer.length; i++) {
-                        bitString += buffer[i].toString(2).padStart(8, '0');
-                    }
-                    // Convert bitString back to characters
-                    let jsonChars = [];
-                    for (let i = 0; i < bitString.length; i += 8) {
-                        const byte = bitString.slice(i, i + 8);
-                        const code = parseInt(byte, 2);
-                        jsonChars.push(String.fromCharCode(code));
-                    }
-                    const jsonString = jsonChars.join('');
-                    const obj = JSON.parse(jsonString);
-                    imgMap.clear();
-                    for (const key of Object.keys(obj)) {
-                        const arr = Array.isArray(obj[key]) ? obj[key] : [];
-                        imgMap.set(key, new Set(arr));
-                    }
-                    return imgMap;
-                }
+                db.each("SELECT imgId, word FROM ImageWords", (err, row) => {
+                    console.log("Row info:", row);    
+                });
             }
         </script>
 

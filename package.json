@@ -24,6 +24,7 @@
     "prompt-sync": "^4.2.0",
     "qrcode": "^1.5.0",
     "react": "^17.0.0",
+    "sqlite3": "^5.1.7",
     "tesseract.js": "^6.0.1"
   }
 }
