@@ -32,21 +32,19 @@
                     </div>
 
                     <div class="control-group">
-                        <label for="keywordMode">Match mode</label>
-                        <select id="keywordMode" aria-label="Match mode">
-                            <option value="AND">AND (all keywords)</option>
-                            <option value="OR">OR (any keyword)</option>
+                        <label for="keywordMode">Keyword Search Mode</label>
+                        <select id="keywordMode">
+                            <option value="AND">All keywords (AND)</option>
+                            <option value="OR">Any keyword (OR)</option>
                         </select>
                     </div>
 
                     <div class="control-group">
-                        <label for="startDate">Start date</label>
-                        <input id="startDate" type="date" />
-                    </div>
-
-                    <div class="control-group">
-                        <label for="endDate">End date</label>
-                        <input id="endDate" type="date" />
+                        <label for="startDate">Date Range</label>
+                        <div style="display:flex;gap:4px">
+                            <input id="startDate" type="date" placeholder="Start Date" />
+                            <input id="endDate" type="date" placeholder="End Date" />
+                        </div>
                     </div>
 
                     <div class="control-group">
@@ -72,15 +70,17 @@
                                     </tr>
                             </thead>
                             <tbody id="imageTableBody">
-                                <!-- rows rendered by JS -->
-                            </tbody>
+                                </tbody>
                         </table>
                     </div>
+                    
+                    <div id="paginationControls" class="pagination-controls" aria-label="Pagination Navigation">
+                        </div>
+                    
                 </main>
             </section>
 
-            <!-- Image preview opens in its own page (imageDetail.html?id=...) to compartmentalize future features -->
-        </div>
+            </div>
 
     </body>
     <script type="module" src="./imageAnalysis-ui.js"></script>
