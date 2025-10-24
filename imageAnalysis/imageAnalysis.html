@@ -16,9 +16,8 @@
 
             const sqlite3 = require('sqlite3').verbose();
             const db = new sqlite3.Database('imgDb');
-            db.run("CREATE TABLE IF NOT EXISTS Images (imgId INT PRIMARY KEY, imgPath VARCHAR(1024) NOT NULL UNIQUE)");
+            db.run("CREATE TABLE IF NOT EXISTS Images (imgId INT PRIMARY KEY, imgPath VARCHAR(1024) NOT NULL UNIQUE, userKey VARCHAR(8) NOT NULL, timestamp DATETIME NOT NULL)");
             db.run("CREATE TABLE IF NOT EXISTS ImageWords (imgId INT NOT NULL, word VARCHAR(64) NOT NULL, PRIMARY KEY(imgId, word), FOREIGN KEY (imgId) REFERENCES Images(imgId) ON DELETE CASCADE)");
-            //add tables to link imageId to user and also link imgId to timestamp
 
             //list of common words that we wont want to search through, may want to expand at some point
             const prepositions = new Set(["about", "above", "across", "after", "against", "along", "among", "around", "before",
@@ -68,13 +67,25 @@
                 
                 //for now this will just be an int starting at zero, eventually will need to replace
                 //with a query that grabs the max id from the database
-                let nextId = 0;
+                let nextId;
+                db.get("SELECT MAX(imgId) as maxId FROM Images", (err, row) => {
+                    nextId = row.maxId;
+                });
 
                 //iterating through our files
                 for (const file of fileList) {
                     //adding file to the database
+                    //we know the date is the part of the image path separated by _
+                    //we have to also split out the \ on the first value
+                    let dateString = file.path.split('_');
+                    const dateObj = new Date(parseInt(dateString[0].split('\\').at(-1)), 
+                                             parseInt(dateString[1]), parseInt(dateString[2]), 
+                                             parseInt(dateString[3]), parseInt(dateString[4]), 
+                                             parseInt(dateString[5]), 0);
+                    const isoString = dateObj.toISOString();
+                    //TODO: need to get user id from filepath
                     nextId++;
-                    db.run(`INSERT INTO Images (imgId, imgPath) VALUES (?, ?)`, [nextId, file.path]);
+                    db.run(`INSERT INTO Images (imgId, imgPath, userKey, timestamp) VALUES (?, ?, ?, ?)`, [nextId, file.path, "test", isoString]);
 
                     //running ocr on the image
                     const { data: { text } } = await worker.recognize(file.path);
@@ -102,11 +113,11 @@
                 //terminating the worker
                 await worker.terminate();
 
-                db.each("SELECT imgId, imgPath FROM Images", (err, row) => {
+                db.each("SELECT * FROM Images", (err, row) => {
                     console.log("Row info:", row);    
                 });
 
-                db.each("SELECT imgId, word FROM ImageWords", (err, row) => {
+                db.each("SELECT * FROM ImageWords", (err, row) => {
                     console.log("Row info:", row);    
                 });
             }
