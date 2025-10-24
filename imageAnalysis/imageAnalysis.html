@@ -15,9 +15,10 @@
         <script type="module">
 
             const sqlite3 = require('sqlite3').verbose();
-            const db = new sqlite3.Database(':memory:');
+            const db = new sqlite3.Database('imgDb');
             db.run("CREATE TABLE IF NOT EXISTS Images (imgId INT PRIMARY KEY, imgPath VARCHAR(1024) NOT NULL UNIQUE)");
-            db.run("CREATE TABLE IF NOT EXISTS ImageWords (imgId INT NOT NULL, word VARCHAR(64) NOT NULL, PRIMARY KEY(imgId, word), FOREIGN KEY (imgId) REFERENCES Images(imgId))");
+            db.run("CREATE TABLE IF NOT EXISTS ImageWords (imgId INT NOT NULL, word VARCHAR(64) NOT NULL, PRIMARY KEY(imgId, word), FOREIGN KEY (imgId) REFERENCES Images(imgId) ON DELETE CASCADE)");
+            //add tables to link imageId to user and also link imgId to timestamp
 
             //list of common words that we wont want to search through, may want to expand at some point
             const prepositions = new Set(["about", "above", "across", "after", "against", "along", "among", "around", "before",
@@ -26,7 +27,24 @@
             "over", "past", "round", "since", "than", "through", "toward", "under", "underneath", "unlike",
             "until", "upon", "via", "with", "within", "without"]);
 
-            // const webUtils = require('electron').remote.require('./webUtils.js');
+            
+            document.getElementById("imgSearch").addEventListener("search", (event) => {
+                console.log(event.target.value);
+                const searchTerm = event.target.value.toLowerCase();
+
+                db.each(`SELECT DISTINCT i.imgId, i.imgPath 
+                        FROM Images i
+                        INNER JOIN ImageWords iw ON i.imgId = iw.imgId
+                        WHERE LOWER(iw.word) LIKE ?`, 
+                        ['%' + searchTerm + '%'], 
+                        (err, row) => {
+                            if(err) {
+                                console.log(err);
+                            }
+                            console.log("Row info:", row);    
+                });
+            });
+
             document.getElementById("imageSelector").addEventListener("change", (event) => {
                 
                 const fileList = event.target.files; 
