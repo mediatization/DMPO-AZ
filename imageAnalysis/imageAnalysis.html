@@ -12,12 +12,22 @@
     <link rel="stylesheet" href="./style.css">
     <body id="body">
 
+        <!-- We use a script inside the html as that is the only way we can get the OCR library to function -->
         <script type="module">
-
+            //our imports
             const sqlite3 = require('sqlite3').verbose();
+            const fs = require('fs').promises;
+            const path = require('path');
+
             const db = new sqlite3.Database('imgDb');
             db.run("CREATE TABLE IF NOT EXISTS Images (imgId INT PRIMARY KEY, imgPath VARCHAR(1024) NOT NULL UNIQUE, userKey VARCHAR(8) NOT NULL, timestamp DATETIME NOT NULL)");
             db.run("CREATE TABLE IF NOT EXISTS ImageWords (imgId INT NOT NULL, word VARCHAR(64) NOT NULL, PRIMARY KEY(imgId, word), FOREIGN KEY (imgId) REFERENCES Images(imgId) ON DELETE CASCADE)");
+
+            //not currently used, will be helpful later for storing notes and tagged words of images
+            db.run("CREATE TABLE IF NOT EXISTS ImageNotes (imgId INT PRIMARY KEY, imgNote TEXT,  FOREIGN KEY (imgId) REFERENCES Images(imgId) ON DELETE CASCADE)")
+            //maybe at some point change to use a tag from a tags table so researchers can easily re-use tages for images
+            db.run("CREATE TABLE IF NOT EXISTS ImageTags (imgId INT NOT NULL, tag VARCHAR(64) NOT NULL, PRIMARY KEY(imgId, tag), FOREIGN KEY (imgId) REFERENCES Images(imgId) ON DELETE CASCADE)");
+            
 
             //list of common words that we wont want to search through, may want to expand at some point
             const prepositions = new Set(["about", "above", "across", "after", "against", "along", "among", "around", "before",
@@ -69,12 +79,20 @@
                 //with a query that grabs the max id from the database
                 let nextId;
                 db.get("SELECT MAX(imgId) as maxId FROM Images", (err, row) => {
-                    nextId = row.maxId;
+                    if(row.maxId) {
+                        nextId = row.maxId;
+                    }
+                    else {
+                        nextId = 0;
+                    }
                 });
 
                 //iterating through our files
                 for (const file of fileList) {
                     //adding file to the database
+ 
+                    nextId++;
+
                     //we know the date is the part of the image path separated by _
                     //we have to also split out the \ on the first value
                     let dateString = file.path.split('_');
@@ -84,8 +102,10 @@
                                              parseInt(dateString[5]), 0);
                     const isoString = dateObj.toISOString();
                     //TODO: need to get user id from filepath
-                    nextId++;
-                    db.run(`INSERT INTO Images (imgId, imgPath, userKey, timestamp) VALUES (?, ?, ?, ?)`, [nextId, file.path, "test", isoString]);
+                    
+                    let user = dateString[0].split(`\\`).at(-2);
+
+                    db.run(`INSERT INTO Images (imgId, imgPath, userKey, timestamp) VALUES (?, ?, ?, ?)`, [nextId, file.path, user, isoString]);
 
                     //running ocr on the image
                     const { data: { text } } = await worker.recognize(file.path);
@@ -121,6 +141,52 @@
                     console.log("Row info:", row);    
                 });
             }
+
+            const searchForImagesToScan = async function() {
+                
+                const scannedImgs = new Set();
+                let toScan = [];
+
+                db.each("SELECT imgPath FROM Images", (err, row) => {
+                    scannedImgs.add(row.imgPath);
+                });
+
+                console.log(scannedImgs);
+
+                const decryptedPath = path.join(__dirname, '../decrypted');
+
+                async function getAllFiles() {
+                    try {
+                        const items = await fs.readdir(decryptedPath);
+                        await Promise.all(
+                            items.map(async (item) => {
+                                const fullPath = path.join(decryptedPath, item);
+                                const stat = await fs.stat(fullPath);
+                                
+                                if (stat.isDirectory()) {
+                                    // Recursive call for directories
+                                    //should only happen once for each user at the /decrypt/ level, and subfolders should have no directories within them
+                                    getAllFiles(fullPath); 
+                                } else if(!scannedImgs.has(fullPath)) {
+                                    toScan.push(fullPath);
+                                }
+                            })
+                        );
+                    }
+                    catch (error) {
+                        console.log('Error reading directory:', error);
+                    }
+                }
+
+                await getAllFiles();
+
+
+                console.log(toScan);
+
+                performOCR(toScan);
+            }
+
+            document.getElementById("imgScan").addEventListener("click", searchForImagesToScan);
         </script>
 
         <div>
@@ -134,7 +200,8 @@
         <div>
             <h1>Search Images</h1>
             <label for="imgSearch">Search through processed images</label> 
-            <input type="search" id="imgSearch"> 
+            <input type="search" id="imgSearch">
+            <input type="button" id="imgScan" value="Automatically Scan for new images">
         </div>
 
         <div id="testDiv" style="display: flex; flex-direction: column;"></div>
