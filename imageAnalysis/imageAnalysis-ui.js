@@ -1,251 +1,160 @@
-import { TAGS, IMAGES } from './imageData.js';
+// imageAnalysis-ui.js (renderer UI)
+const { ipcRenderer } = require('electron');
+const sqlite3 = require('sqlite3').verbose();
 
-// Simple UI renderer for the prototype. Filtering logic will be implemented after layout approval.
+let db;
+let IMAGES = []; // Master list of all images
+let currentFilterResults = []; // List of images matching current filter
+let currentPage = 1;
+const pageSize = 10;
 
-const keywordsInput = document.getElementById('keywordsInput');
-const startDateInput = document.getElementById('startDate');
-const endDateInput = document.getElementById('endDate');
-const userInput = document.getElementById('userInput');
-// tags removed from left panel; keywordMode select toggles AND/OR behavior
-const keywordModeSelect = document.getElementById('keywordMode');
-const imageTableBody = document.getElementById('imageTableBody');
-const clearFiltersBtn = document.getElementById('clearFilters');
-const registeredCountEl = document.getElementById('registeredCount');
-const resultsCountEl = document.getElementById('resultsCount');
-const paginationControlsEl = document.getElementById('paginationControls');
-
-// NEW: Pagination State
-const PAGINATION_SETTINGS = {
-  ITEMS_PER_PAGE: 10,
-  currentPage: 1,
-  totalResults: 0,
-  totalPages: 0,
-};
-
-let hasSearched = false; // whether user has performed an explicit search
-
-function renderTagList() {
-  // removed: tags list is no longer part of search panel (keywords input is used)
-}
-
-function makeThumbnailCell(image) {
-  const td = document.createElement('td');
-  const img = document.createElement('img');
-  img.className = 'thumb';
-  img.alt = `${image.filename} thumbnail`;
-  img.src = image.thumbnail;
-  img.addEventListener('click', () => {
-    // Open dedicated image detail page to compartmentalize future per-image features
-    const url = new URL('./imageDetail.html', window.location.href);
-    url.searchParams.set('id', image.id);
-    window.location.href = url.toString();
+document.addEventListener('DOMContentLoaded', async () => {
+  const dbPath = await ipcRenderer.invoke('get-db-path');
+  console.log('[UI] Opening DB at', dbPath);
+  db = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
+    if (err) console.error('[UI] DB open error', err);
+    else console.log('[UI] DB opened successfully');
   });
-  td.appendChild(img);
-  return td;
-}
 
-// Function to render robust pagination controls
-function renderPagination() {
-  const { currentPage, totalPages, totalResults } = PAGINATION_SETTINGS;
-  paginationControlsEl.innerHTML = '';
-  
-  if (totalPages <= 1) { // Only show controls if more than one page exists
-    paginationControlsEl.style.display = 'none';
-    return;
-  }
-  
-  paginationControlsEl.style.display = 'flex';
+  const tbody = document.querySelector('#resultsTable tbody');
+  const registeredCountEl = document.getElementById('registeredCount');
+  const pageInfo = document.getElementById('pageInfo');
+  const prevPageBtn = document.getElementById('prevPage');
+  const nextPageBtn = document.getElementById('nextPage');
 
-  // Info Text: Showing X to Y of Z
-  const start = (currentPage - 1) * PAGINATION_SETTINGS.ITEMS_PER_PAGE + 1;
-  const end = Math.min(currentPage * PAGINATION_SETTINGS.ITEMS_PER_PAGE, totalResults);
-  const info = document.createElement('span');
-  info.className = 'page-info';
-  info.textContent = `Showing ${start}-${end} of ${totalResults} results`;
-  paginationControlsEl.appendChild(info);
-
-  // Previous Button
-  const prevBtn = document.createElement('button');
-  prevBtn.className = 'page-btn';
-  prevBtn.textContent = '← Previous';
-  prevBtn.disabled = currentPage === 1;
-  prevBtn.addEventListener('click', () => changePage(currentPage - 1));
-  paginationControlsEl.appendChild(prevBtn);
-
-  // Page buttons (render up to 5 around the current one)
-  const maxButtons = 5;
-  let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
-  let endPage = Math.min(totalPages, startPage + maxButtons - 1);
-
-  // Re-adjust start page if range is too small (e.g., near the end)
-  if (endPage - startPage < maxButtons - 1) {
-    startPage = Math.max(1, endPage - maxButtons + 1);
-  }
-
-  for (let i = startPage; i <= endPage; i++) {
-    const pageBtn = document.createElement('button');
-    pageBtn.className = `page-btn${i === currentPage ? ' active' : ''}`;
-    pageBtn.textContent = i;
-    pageBtn.addEventListener('click', () => changePage(i));
-    paginationControlsEl.appendChild(pageBtn);
-  }
-  
-  // Next Button
-  const nextBtn = document.createElement('button');
-  nextBtn.className = 'page-btn';
-  nextBtn.textContent = 'Next →';
-  nextBtn.disabled = currentPage === totalPages;
-  nextBtn.addEventListener('click', () => changePage(currentPage + 1));
-  paginationControlsEl.appendChild(nextBtn);
-}
-
-// Function to change page and trigger a re-render
-function changePage(page) {
-  if (page < 1 || page > PAGINATION_SETTINGS.totalPages || page === PAGINATION_SETTINGS.currentPage) {
-    return;
-  }
-  PAGINATION_SETTINGS.currentPage = page;
-  // Re-run the search to apply filtering and pagination
-  performSearch(false);
-  // Scroll table back to the top for better UX
-  document.querySelector('.table-wrap').scrollTop = 0;
-}
-
-// Function to update the table body
-function applyRender(images) {
-  // 1. Update total results count and page info
-  PAGINATION_SETTINGS.totalResults = images.length;
-  PAGINATION_SETTINGS.totalPages = Math.ceil(images.length / PAGINATION_SETTINGS.ITEMS_PER_PAGE);
-
-  // Ensure current page is valid after filtering
-  if (PAGINATION_SETTINGS.currentPage > PAGINATION_SETTINGS.totalPages) {
-    PAGINATION_SETTINGS.currentPage = Math.max(1, PAGINATION_SETTINGS.totalPages);
-  }
-
-  // 2. Calculate slice indices for the current page
-  const start = (PAGINATION_SETTINGS.currentPage - 1) * PAGINATION_SETTINGS.ITEMS_PER_PAGE;
-  const end = start + PAGINATION_SETTINGS.ITEMS_PER_PAGE;
-  const pageImages = images.slice(start, end);
-
-  // 3. Render table rows (only for the current page)
-  imageTableBody.innerHTML = '';
-  if (pageImages.length === 0) {
-    // If no results, show a message
-    const row = imageTableBody.insertRow();
-    const cell = row.insertCell();
-    cell.colSpan = 4;
-    cell.textContent = hasSearched ? 'No images match the criteria.' : 'Click Search to view results.';
-    cell.style.textAlign = 'center';
-    cell.style.padding = '20px';
-  } else {
-    pageImages.forEach(image => {
-      const row = imageTableBody.insertRow();
-      row.appendChild(makeThumbnailCell(image));
-      row.insertCell().textContent = image.date;
-      row.insertCell().textContent = image.user;
-      
-      const keywordsCell = row.insertCell();
-      keywordsCell.className = 'tags-cell';
-      image.keywords.forEach(keyword => {
-        const span = document.createElement('span');
-        span.className = 'tag-chip';
-        span.textContent = keyword;
-        keywordsCell.appendChild(span);
+  async function loadImages() {
+    return new Promise((resolve, reject) => {
+      db.all('SELECT * FROM Images ORDER BY timestamp DESC', async (err, rows) => {
+        if (err) return reject(err);
+        const imgs = [];
+        for (const r of rows) {
+          const words = await new Promise((res, rej) => {
+            db.all('SELECT word FROM ImageWords WHERE imgId=?',[r.imgId],(e,wr)=>{
+              if(e)rej(e); else res(wr.map(x=>x.word));
+            });
+          });
+          imgs.push({
+            id: r.imgId,
+            filename: r.imgPath.split(/[\\/]/).pop(),
+            date: r.timestamp ? r.timestamp.slice(0,10) : '',
+            user: r.userKey || '',
+            keywords: words,
+            thumbnail: r.imgPath,
+            full: r.imgPath
+          });
+        }
+        resolve(imgs);
       });
     });
   }
-  
-  // 4. Update UI counts and render pagination
-  resultsCountEl.textContent = images.length;
-  renderPagination();
-}
 
-// Function to clear all filters and results
-function clearResults() {
-  // Reset pagination state
-  PAGINATION_SETTINGS.currentPage = 1;
-  PAGINATION_SETTINGS.totalResults = 0;
-
-  keywordsInput.value = '';
-  startDateInput.value = '';
-  endDateInput.value = '';
-  userInput.value = '';
-
-  resultsCountEl.textContent = 0;
-  imageTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:#6b7280;">Click Search to view results.</td></tr>';
-  paginationControlsEl.style.display = 'none'; // Hide pagination
-  hasSearched = false;
-}
-
-// Function to perform filtering and rendering
-function performSearch(resetPage = true) {
-  if (resetPage) {
-    PAGINATION_SETTINGS.currentPage = 1; // Always reset to page 1 for a new search
-    hasSearched = true;
+  async function refreshImagesFromDb() {
+    try {
+      IMAGES = await loadImages();
+      currentFilterResults = IMAGES; // Initialize filter list
+      console.log('[UI] IMAGES count:', IMAGES.length);
+      registeredCountEl.textContent = IMAGES.length;
+      currentPage = 1; // Reset to first page
+      renderResults(); // Render with the full list
+    } catch (e) {
+      console.error('[UI] refreshImagesFromDb error', e);
+    }
   }
 
-  const searchKeywordsStr = keywordsInput.value.toLowerCase().trim();
-  const searchKeywords = searchKeywordsStr ? searchKeywordsStr.split(/[\s,]+/).filter(k => k.length > 0) : [];
-  const searchMode = keywordModeSelect.value;
-  const startDate = startDateInput.value;
-  const endDate = endDateInput.value;
-  const searchUser = userInput.value.toLowerCase().trim();
+  function performSearch() {
+    const kwInput = document.getElementById('searchKeywords').value.toLowerCase();
+    const searchWords = kwInput.split(/\s+/).filter(Boolean); // Split by space
+    const mode = document.getElementById('keywordMode').value; // 'AND' or 'OR'
+    const user = document.getElementById('searchUser').value.toLowerCase();
+    const start = document.getElementById('startDate').value;
+    const end = document.getElementById('endDate').value;
 
-  const filteredImages = IMAGES.filter(image => {
-    // Filter by Date
-    if (startDate && image.date < startDate) return false;
-    if (endDate && image.date > endDate) return false;
-
-    // Filter by User
-    if (searchUser && image.user.toLowerCase() !== searchUser) return false;
-
-    // Filter by Keywords (OCR)
-    if (searchKeywords.length > 0) {
-      const imgKeywords = image.keywords.map(k => k.toLowerCase());
-
-      if (searchMode === 'AND') {
-        // AND: all search keywords must be present
-        for (const k of searchKeywords) {
-          if (!imgKeywords.includes(k)) return false;
+    const results = IMAGES.filter(img => {
+      // Keyword Match Logic
+      let matchKw = true;
+      if (searchWords.length > 0) {
+        if (mode === 'OR') {
+          // OR: *at least one* searchWord must be included in *any* of the img.keywords
+          matchKw = searchWords.some(searchWord => 
+            img.keywords.some(imgKey => imgKey.includes(searchWord))
+          );
+        } else {
+          // AND: *every* searchWord must be included in *at least one* of the img.keywords
+          matchKw = searchWords.every(searchWord =>
+            img.keywords.some(imgKey => imgKey.includes(searchWord))
+          );
         }
-      } else {
-        // OR: at least one search keyword must be present
-        let any = false;
-        for (const k of searchKeywords) {
-          if (imgKeywords.includes(k)) { any = true; break; }
-        }
-        if (!any) return false;
       }
-    }
+      
+      const matchUser = !user || img.user.toLowerCase().includes(user);
+      const matchDate = (!start || img.date >= start) && (!end || img.date <= end);
+      
+      return matchKw && matchUser && matchDate;
+    });
 
-    return true;
+    currentFilterResults = results; // Store filtered results
+    currentPage = 1; // Reset to page 1
+    renderResults(); // Render the filtered results
+  }
+
+  document.getElementById('searchBtn').addEventListener('click', performSearch);
+  
+  document.getElementById('clearFilters').addEventListener('click', () => {
+    document.getElementById('searchKeywords').value = '';
+    document.getElementById('searchUser').value = '';
+    document.getElementById('startDate').value = '';
+    document.getElementById('endDate').value = '';
+    document.getElementById('keywordMode').value = 'OR';
+    
+    currentFilterResults = IMAGES; // Reset filter to all images
+    currentPage = 1; // Reset page
+    renderResults(); // Render
   });
 
-  applyRender(filteredImages);
-}
+  function paginate(items, page, perPage) {
+    const offset = (page - 1) * perPage;
+    return items.slice(offset, offset + perPage);
+  }
 
-clearFiltersBtn.addEventListener('click', () => {
-  clearResults();
-});
+  // Modified to use 'currentFilterResults' by default
+  function renderResults() {
+    const dataToRender = currentFilterResults; // Always use the filtered list
+    
+    const total = dataToRender.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    currentPage = Math.max(1, Math.min(currentPage, totalPages)); // Ensure page is valid
+    
+    const pageItems = paginate(dataToRender, currentPage, pageSize);
+    tbody.innerHTML = '';
 
-// Search is explicit via button
-const searchBtn = document.getElementById('searchBtn');
-if (searchBtn) searchBtn.addEventListener('click', () => {
-  performSearch(true);
-});
-
-// Allow Enter to trigger Search when focused in text inputs
-['keywordsInput', 'startDate', 'endDate', 'userInput'].forEach(id => {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      performSearch(true);
+    for (const img of pageItems) {
+      const tr = document.createElement('tr');
+      const thumbTd = document.createElement('td');
+      const im = document.createElement('img');
+      // Use "file://" protocol to ensure local paths render as images
+      im.src = `file://${img.thumbnail}`; 
+      im.className = 'thumb';
+      im.addEventListener('click',()=>window.location.href=`./imageDetail.html?id=${img.id}`);
+      thumbTd.appendChild(im);
+      tr.appendChild(thumbTd);
+      tr.innerHTML += `<td>${img.filename}</td><td>${img.user}</td><td>${img.date}</td>
+                       <td>${img.keywords.map(k=>`<span class='tag-chip'>${k}</span>`).join(' ')}</td>`;
+      tbody.appendChild(tr);
     }
+
+    pageInfo.textContent = `Page ${currentPage}/${totalPages} (${total} results)`;
+    prevPageBtn.disabled = currentPage <= 1;
+    nextPageBtn.disabled = currentPage >= totalPages;
+  }
+
+  // Pagination buttons now correctly work with the filtered list
+  prevPageBtn.addEventListener('click', () => { currentPage--; renderResults(); });
+  nextPageBtn.addEventListener('click', () => { currentPage++; renderResults(); });
+
+  // initial load + ipc refresh
+  refreshImagesFromDb();
+  ipcRenderer.on('refresh-images', async () => {
+    console.log('[UI] received refresh-images, reloading DB...');
+    await refreshImagesFromDb();
   });
 });
-
-// Initialize UI
-registeredCountEl.textContent = IMAGES.length;
-clearResults(); // Start with empty results and 'Click Search' message
