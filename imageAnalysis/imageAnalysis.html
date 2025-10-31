@@ -1,157 +1,87 @@
 <!DOCTYPE html>
-<html style="height:100%">
-  <head>
-    <meta charset="UTF-8" />
-    <title>Image Analysis</title>
-    <meta http-equiv="Content-Security-Policy"
-          content="script-src 'self' 'unsafe-inline' 'unsafe-eval'; worker-src 'self';" />
-    <script src="../node_modules/tesseract.js/dist/tesseract.min.js"></script>
-    <link rel="stylesheet" href="./style.css" />
-  </head>
-  <body>
-    <div class="container">
-      <header class="page-header">
-        <h1>Image Analysis</h1>
-      </header>
+<html style="height: 100%">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Image Analysis</title>
+        <meta
+            http-equiv="Content-Security-Policy"
+            content="script-src 'self' 'unsafe-inline';"
+        />
+        <script src="../node_modules/tesseract.js/dist/tesseract.min.js"></script>
+    </head>
+    <link rel="stylesheet" href="./style.css">
+    <body id="body">
 
-      <div class="main-grid">
-        <aside class="left-panel">
-          <div class="control-group" id="ocrSection">
-            <h3>Process Images</h3>
-            <label for="imageSelector">Choose images:</label>
-            <input type="file" id="imageSelector" multiple />
-            <button id="processImagesBtn">Process & Index</button>
-            <p id="ocrStatus" class="muted" style="font-size:13px;margin-top:4px;"></p>
-            <hr />
-          </div>
+        <div class="container">
+            <header class="page-header">
+                <h1>Image Analysis (UI Prototype)</h1>
+                <p class="muted">Using dummy data. Backend integration will be wired later.</p>
+            </header>
 
-          <div class="control-group">
-            <label for="searchKeywords">Keywords</label>
-            <input type="text" id="searchKeywords" />
-          </div>
+            <section class="main-grid">
+                <aside class="left-panel" aria-label="Advanced search">
+                    <div class="control-group">
+                        <div id="counts" style="margin-bottom:8px">
+                            <div><strong>Registered:</strong> <span id="registeredCount">0</span></div>
+                            <div><strong>Results:</strong> <span id="resultsCount">0</span></div>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <label for="keywordsInput">Keywords (OCR)</label>
+                        <input id="keywordsInput" type="search" placeholder="Enter keywords (comma or space separated)" />
+                    </div>
 
-          <div class="control-group" style="margin-top:-4px; margin-bottom: 16px;">
-             <label for="keywordMode" style="font-weight:normal; font-size: 13px;">Search mode:</label>
-             <select id="keywordMode" style="padding: 4px 8px; font-size: 13px; height: auto; width: auto;">
-               <option value="OR" selected>Any word (OR)</option>
-               <option value="AND">All words (AND)</option>
-             </select>
-          </div>
-          <div class="control-group">
-            <label for="searchUser">User</label>
-            <input type="text" id="searchUser" />
-          </div>
+                    <div class="control-group">
+                        <label for="keywordMode">Keyword Search Mode</label>
+                        <select id="keywordMode">
+                            <option value="AND">All keywords (AND)</option>
+                            <option value="OR">Any keyword (OR)</option>
+                        </select>
+                    </div>
 
-          <div class="control-group">
-            <label>Date range</label>
-            <input type="date" id="startDate" /> – <input type="date" id="endDate" />
-          </div>
+                    <div class="control-group">
+                        <label for="startDate">Date Range</label>
+                        <div style="display:flex;gap:4px">
+                            <input id="startDate" type="date" placeholder="Start Date" />
+                            <input id="endDate" type="date" placeholder="End Date" />
+                        </div>
+                    </div>
 
-          <div class="control-group small">
-            <button id="searchBtn">Search</button>
-            <button id="clearFilters">Clear</button>
-          </div>
+                    <div class="control-group">
+                        <label for="userInput">User</label>
+                        <input id="userInput" type="text" placeholder="username" />
+                    </div>
 
-          <p class="muted">Registered: <span id="registeredCount">0</span></p>
-        </aside>
+                    <div class="control-group small" style="display:flex;gap:8px">
+                        <button id="searchBtn">Search</button>
+                        <button id="clearFilters">Clear filters</button>
+                    </div>
+                </aside>
 
-        <section class="right-panel">
-          <div class="table-wrap">
-            <table class="image-table" id="resultsTable">
-              <thead>
-                <tr>
-                  <th>Preview</th><th>Filename</th><th>User</th>
-                  <th>Date</th><th>Keywords</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
-          <div class="pagination-controls">
-            <span class="page-info" id="pageInfo"></span>
-            <button class="page-btn" id="prevPage">Prev</button>
-            <button class="page-btn" id="nextPage">Next</button>
-          </div>
-        </section>
-      </div>
-    </div>
+                <main class="right-panel">
+                    <div class="table-wrap">
+                        <table class="image-table" aria-label="Images table">
+                            <thead>
+                                    <tr>
+                                        <th>Preview</th>
+                                        <th>Timestamp</th>
+                                        <th>User</th>
+                                        <th>Keywords</th>
+                                    </tr>
+                            </thead>
+                            <tbody id="imageTableBody">
+                                </tbody>
+                        </table>
+                    </div>
+                    
+                    <div id="paginationControls" class="pagination-controls" aria-label="Pagination Navigation">
+                        </div>
+                    
+                </main>
+            </section>
 
-    <script src="./imageAnalysis-ui.js"></script>
-    <script>
-        
-      (async () => {
-        const dbPath = await ipcRenderer.invoke('get-db-path');
-        console.log('[OCR] using DB path:', dbPath);
-        const db = new sqlite3.Database(dbPath);
-        const prepositions = new Set(['about','above','after','among','around','before','behind','below','beside','between','beyond','down','during','for','from','inside','into','like','near','onto','opposite','outside','over','past','round','since','through','toward','under','underneath','until','upon','via','with','within','without']);
+            </div>
 
-        db.serialize(() => {
-          db.run(`CREATE TABLE IF NOT EXISTS Images(
-            imgId INTEGER PRIMARY KEY AUTOINCREMENT,
-            imgPath TEXT UNIQUE,
-            userKey TEXT,
-            timestamp TEXT
-          )`);
-          db.run(`CREATE TABLE IF NOT EXISTS ImageWords(
-            imgId INTEGER,
-            word TEXT,
-            PRIMARY KEY(imgId,word),
-            FOREIGN KEY(imgId) REFERENCES Images(imgId) ON DELETE CASCADE
-          )`);
-        });
-
-        async function performOcr(fileList) {
-          const status = document.getElementById('ocrStatus');
-          status.textContent = 'Starting OCR...';
-
-          const worker = await Tesseract.createWorker('eng', 1, {
-            workerPath: '../node_modules/tesseract.js/dist/worker.min.js',
-            corePath: '../node_modules/tesseract.js-core/',
-            langPath: './',
-            gzip: false,
-            workerBlobURL: false,
-            logger: m => status.textContent = `${m.status} ${(m.progress*100).toFixed(0)}%`
-          });
-
-          let processed = 0;
-          for (const file of fileList) {
-            const iso = new Date().toISOString();
-            const imgId = await new Promise((resolve, reject) => {
-              db.run(`INSERT OR IGNORE INTO Images (imgPath,userKey,timestamp) VALUES (?,?,?)`,
-                [file.path,'test',iso],
-                function(err) {
-                  if (err) return reject(err);
-                  if (this.lastID) return resolve(this.lastID);
-                  db.get(`SELECT imgId FROM Images WHERE imgPath=?`,[file.path],(e,row)=>{
-                    if(e)reject(e); else resolve(row.imgId);
-                  });
-                });
-            });
-
-            const { data: { text } } = await worker.recognize(file.path);
-            const words = text.split(/\s+/)
-              .map(w=>w.toLowerCase().replace(/[^\w-]/g,''))
-              .filter(w=>w.length>=4 && !prepositions.has(w));
-            const uniqueWords = Array.from(new Set(words));
-
-            for (const word of uniqueWords)
-              await new Promise(res=>db.run(`INSERT OR IGNORE INTO ImageWords(imgId,word) VALUES (?,?)`,[imgId,word],()=>res()));
-
-            processed++;
-            status.textContent = `Processed ${processed}/${fileList.length}`;
-            console.log('[OCR] finished', file.path, 'words:', uniqueWords.length);
-          }
-
-          await worker.terminate();
-          status.textContent = `OCR complete. ${fileList.length} files processed.`;
-          ipcRenderer.send('refresh-images');
-        }
-
-        document.getElementById('processImagesBtn').addEventListener('click',()=>{
-          const input=document.getElementById('imageSelector');
-          if(input.files.length) performOcr(input.files);
-        });
-      })();
-    </script>
-  </body>
+    </body>
+    <script type="module" src="./imageAnalysis-ui.js"></script>
 </html>

@@ -1,6 +1,5 @@
 const { app, BrowserWindow, ipcMain, dialog, ipcRenderer, shell } = require("electron");
 const fs = require("fs")
-const path = require("path"); // <-- ADDED HERE
 const Storage = require("@azure/storage-blob");
 const { timePassedFromDate } = require("./util");
 const checkInternetConnected = require('check-internet-connected');
@@ -11,12 +10,6 @@ const crypto = require('crypto');
 
 let decryptionQueue = []
 let censoringQueue = []
-
-// --- ADDED DB_PATH DEFINITION ---
-// Use app.getPath('userData') for a persistent, OS-appropriate storage location
-const DB_PATH = path.join(app.getPath('userData'), 'imageAnalysis.db');
-console.log(`[Main] Database path set to: ${DB_PATH}`);
-// ---------------------------------
 
 const downloader = new Downloader()
 
@@ -34,7 +27,7 @@ const AZURE_ACC_KEY = settings.accountKey
 // Create the BlobServiceClient object with connection string
 const blobServiceClient = new Storage.BlobServiceClient(AZURE_ACC_URL, new Storage.StorageSharedKeyCredential( AZURE_ACC_NAME, AZURE_ACC_KEY));
 
-const { resolve } = require("path") // Note: 'resolve' is destructured from 'path' here, which is fine.
+const { resolve } = require("path");
 const pythonPath = resolve("../censoring-scripts/venv/Scripts/python.exe")
 const scriptPath = resolve("../censoring-scripts/main.py")
 
@@ -461,13 +454,6 @@ process.on('uncaughtException', (err) => { console.error('uncaughtException', er
 
 const QRCode = require("qrcode")
 
-// --- ADDED HANDLER FOR DB_PATH ---
-ipcMain.handle("get-db-path", (event, args) => {
-    // This simply returns the DB_PATH constant we defined at the top.
-    return DB_PATH;
-});
-// ---------------------------------
-
 ipcMain.handle("open-image-analysis", async (event, args) => {
     const res = await waitForPassphrase()
     if (!res)
@@ -614,7 +600,7 @@ ipcMain.handle("clear-bucket", async (event, args) => {
 });
 
 const { exec } = require('child_process');
-// const path = require('path'); // <-- This is now redundant, handled at top
+const path = require('path');
 
 const build = (key, args) =>
 {

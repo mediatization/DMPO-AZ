@@ -48,12 +48,8 @@ export const IMAGES = [
     date: daysAgo(2),
     user: 'alice',
     keywords: ['screen', 'photo'],
-    // --- START TEST PATHS ---
-    // You must place a test image at ./assets/screenshot-001-thumb.jpg
-    thumbnail: './assets/screenshot-001-thumb.png', 
-    // You must place a test image at ./assets/screenshot-001-full.jpg
-    full: './assets/screenshot-001-full.png' 
-    // --- END TEST PATHS ---
+    thumbnail: makeSvgDataUri('screenshot-001', 240, 140, '#ffffff', '#0f172a'),
+    full: makeSvgDataUri('screenshot-001 (full)', 1200, 800, '#ffffff', '#0f172a')
   },
   {
     id: 'img-002',

@@ -92,9 +92,3 @@ button#clearFilters:hover{background:#f1f5f9}
     color: white;
     border-color: var(--accent);
 }
-
-#ocrSection {
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 12px;
-  margin-bottom: 12px;
-}
