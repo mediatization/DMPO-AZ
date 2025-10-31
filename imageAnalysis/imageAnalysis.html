@@ -54,14 +54,6 @@
                 });
             });
 
-            document.getElementById("imageSelector").addEventListener("change", (event) => {
-                
-                const fileList = event.target.files; 
-                //passing the relevant data to an async function for actual processing
-                performOCR(fileList);
-
-            });
-
             async function performOCR(fileList) {
                 
                 //making the ocr worker
@@ -75,27 +67,35 @@
                     workerBlobURL: false
                 });
                 
-                //for now this will just be an int starting at zero, eventually will need to replace
-                //with a query that grabs the max id from the database
                 let nextId;
-                db.get("SELECT MAX(imgId) as maxId FROM Images", (err, row) => {
-                    if(row.maxId) {
-                        nextId = row.maxId;
-                    }
-                    else {
-                        nextId = 0;
-                    }
+                await new Promise((resolve, reject) => {
+                    db.each("SELECT MAX(imgId) as maxId FROM Images", (err, row) => {
+                        if (err) {
+                            reject(err);
+                            return;
+                        }
+                        if(row.maxId) {
+                            nextId = row.maxId;
+                        }
+                        else {
+                            nextId = 0;
+                        }
+                    }, (err, count) => {
+                        if (err) reject(err);
+                        else resolve(count);
+                    });
                 });
+                console.log(nextId);
 
                 //iterating through our files
                 for (const file of fileList) {
                     //adding file to the database
- 
+                    
                     nextId++;
 
                     //we know the date is the part of the image path separated by _
                     //we have to also split out the \ on the first value
-                    let dateString = file.path.split('_');
+                    let dateString = file.split('_');
                     const dateObj = new Date(parseInt(dateString[0].split('\\').at(-1)), 
                                              parseInt(dateString[1]), parseInt(dateString[2]), 
                                              parseInt(dateString[3]), parseInt(dateString[4]), 
@@ -105,10 +105,18 @@
                     
                     let user = dateString[0].split(`\\`).at(-2);
 
-                    db.run(`INSERT INTO Images (imgId, imgPath, userKey, timestamp) VALUES (?, ?, ?, ?)`, [nextId, file.path, user, isoString]);
+                    //running ocr on the image, we do so before inserting any info about the image to prevent 
+                    //bad data from being inserted
+                    try {
+                        const { data: { text } } = await worker.recognize(file);
+                    }
+                    catch {
+                        continue;
+                    }
 
-                    //running ocr on the image
-                    const { data: { text } } = await worker.recognize(file.path);
+                    db.run(`INSERT INTO Images (imgId, imgPath, userKey, timestamp) VALUES (?, ?, ?, ?)`, [nextId, file, user, isoString]);
+
+
                     
                     //for all the words we found in the ocr, adding to our img database
                     //splitting words by new lines and by spaces
@@ -147,43 +155,55 @@
                 const scannedImgs = new Set();
                 let toScan = [];
 
-                db.each("SELECT imgPath FROM Images", (err, row) => {
-                    scannedImgs.add(row.imgPath);
+                await new Promise((resolve, reject) => {
+                    db.each("SELECT imgPath FROM Images", (err, row) => {
+                        if (err) {
+                            reject(err);
+                            return;
+                        }
+                        scannedImgs.add(row.imgPath);
+                    }, (err, count) => {
+                        if (err) reject(err);
+                        else resolve(count);
+                    });
                 });
 
-                console.log(scannedImgs);
+                console.log("Scanned images:", scannedImgs);
 
-                const decryptedPath = path.join(__dirname, '../decrypted');
+                const decryptedPath = path.join(__dirname, '../decrypted');  
 
-                async function getAllFiles() {
+                async function scanDirectory(dirPath) {
                     try {
-                        const items = await fs.readdir(decryptedPath);
-                        await Promise.all(
-                            items.map(async (item) => {
-                                const fullPath = path.join(decryptedPath, item);
-                                const stat = await fs.stat(fullPath);
-                                
-                                if (stat.isDirectory()) {
-                                    // Recursive call for directories
-                                    //should only happen once for each user at the /decrypt/ level, and subfolders should have no directories within them
-                                    getAllFiles(fullPath); 
-                                } else if(!scannedImgs.has(fullPath)) {
-                                    toScan.push(fullPath);
-                                }
-                            })
-                        );
-                    }
-                    catch (error) {
+                        const items = await fs.readdir(dirPath);
+                        
+                        for (const item of items) {
+                            const fullPath = path.join(dirPath, item);
+                            const stat = await fs.stat(fullPath);
+                            
+                            console.log("Checking:", fullPath);
+
+                            if (stat.isDirectory()) {
+                                // Recursively scan subdirectories
+                                await scanDirectory(fullPath);
+                            } else if (!scannedImgs.has(fullPath)) {
+                                // Only add image files that haven't been scanned
+                                toScan.push(fullPath);
+                            }
+                        }
+                    } catch (error) {
                         console.log('Error reading directory:', error);
                     }
                 }
 
-                await getAllFiles();
+                await scanDirectory(decryptedPath);
 
+                console.log("Images to scan:", toScan);
 
-                console.log(toScan);
-
-                performOCR(toScan);
+                if (toScan.length > 0) {
+                    performOCR(toScan);
+                } else {
+                    console.log("No new images to scan");
+                }
             }
 
             document.getElementById("imgScan").addEventListener("click", searchForImagesToScan);
@@ -191,8 +211,7 @@
 
         <div>
             <h1>Process Images</h1>
-            <label for="imageSelector">Choose images: </label>
-            <input type="file" id="imageSelector" multiple>
+            <input type="button" id="imgScan" value="Automatically Scan for new images">
         </div>
 
         <hr>
@@ -201,7 +220,6 @@
             <h1>Search Images</h1>
             <label for="imgSearch">Search through processed images</label> 
             <input type="search" id="imgSearch">
-            <input type="button" id="imgScan" value="Automatically Scan for new images">
         </div>
 
         <div id="testDiv" style="display: flex; flex-direction: column;"></div>
