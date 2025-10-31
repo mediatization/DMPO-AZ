@@ -1,12 +1,11 @@
-import { TAGS, IMAGES } from './imageData.js';
+// REMOVED: import { TAGS, IMAGES } from './imageData.js';
 
-// Simple UI renderer for the prototype. Filtering logic will be implemented after layout approval.
+// Simple UI renderer for the prototype. Now queries the DB.
 
 const keywordsInput = document.getElementById('keywordsInput');
 const startDateInput = document.getElementById('startDate');
 const endDateInput = document.getElementById('endDate');
 const userInput = document.getElementById('userInput');
-// tags removed from left panel; keywordMode select toggles AND/OR behavior
 const keywordModeSelect = document.getElementById('keywordMode');
 const imageTableBody = document.getElementById('imageTableBody');
 const clearFiltersBtn = document.getElementById('clearFilters');
@@ -14,7 +13,7 @@ const registeredCountEl = document.getElementById('registeredCount');
 const resultsCountEl = document.getElementById('resultsCount');
 const paginationControlsEl = document.getElementById('paginationControls');
 
-// NEW: Pagination State
+// Pagination State
 const PAGINATION_SETTINGS = {
   ITEMS_PER_PAGE: 10,
   currentPage: 1,
@@ -24,18 +23,19 @@ const PAGINATION_SETTINGS = {
 
 let hasSearched = false; // whether user has performed an explicit search
 
-function renderTagList() {
-  // removed: tags list is no longer part of search panel (keywords input is used)
-}
+// Expose functions to the global script block in HTML
+window.performSearch = performSearch;
+window.updateRegisteredCount = updateRegisteredCount;
 
 function makeThumbnailCell(image) {
   const td = document.createElement('td');
   const img = document.createElement('img');
   img.className = 'thumb';
   img.alt = `${image.filename} thumbnail`;
-  img.src = image.thumbnail;
+  // MODIFIED: Use 'file://' protocol for local file paths
+  img.src = 'file://' + image.thumbnail; 
   img.addEventListener('click', () => {
-    // Open dedicated image detail page to compartmentalize future per-image features
+    // Open dedicated image detail page
     const url = new URL('./imageDetail.html', window.location.href);
     url.searchParams.set('id', image.id);
     window.location.href = url.toString();
@@ -44,12 +44,12 @@ function makeThumbnailCell(image) {
   return td;
 }
 
-// Function to render robust pagination controls
+// Function to render robust pagination controls (No changes needed)
 function renderPagination() {
   const { currentPage, totalPages, totalResults } = PAGINATION_SETTINGS;
   paginationControlsEl.innerHTML = '';
   
-  if (totalPages <= 1) { // Only show controls if more than one page exists
+  if (totalPages <= 1) { 
     paginationControlsEl.style.display = 'none';
     return;
   }
@@ -72,16 +72,13 @@ function renderPagination() {
   prevBtn.addEventListener('click', () => changePage(currentPage - 1));
   paginationControlsEl.appendChild(prevBtn);
 
-  // Page buttons (render up to 5 around the current one)
+  // Page buttons
   const maxButtons = 5;
   let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
   let endPage = Math.min(totalPages, startPage + maxButtons - 1);
-
-  // Re-adjust start page if range is too small (e.g., near the end)
   if (endPage - startPage < maxButtons - 1) {
     startPage = Math.max(1, endPage - maxButtons + 1);
   }
-
   for (let i = startPage; i <= endPage; i++) {
     const pageBtn = document.createElement('button');
     pageBtn.className = `page-btn${i === currentPage ? ' active' : ''}`;
@@ -105,32 +102,16 @@ function changePage(page) {
     return;
   }
   PAGINATION_SETTINGS.currentPage = page;
-  // Re-run the search to apply filtering and pagination
+  // Re-run the search (async) to get new page
   performSearch(false);
-  // Scroll table back to the top for better UX
   document.querySelector('.table-wrap').scrollTop = 0;
 }
 
-// Function to update the table body
-function applyRender(images) {
-  // 1. Update total results count and page info
-  PAGINATION_SETTINGS.totalResults = images.length;
-  PAGINATION_SETTINGS.totalPages = Math.ceil(images.length / PAGINATION_SETTINGS.ITEMS_PER_PAGE);
-
-  // Ensure current page is valid after filtering
-  if (PAGINATION_SETTINGS.currentPage > PAGINATION_SETTINGS.totalPages) {
-    PAGINATION_SETTINGS.currentPage = Math.max(1, PAGINATION_SETTINGS.totalPages);
-  }
-
-  // 2. Calculate slice indices for the current page
-  const start = (PAGINATION_SETTINGS.currentPage - 1) * PAGINATION_SETTINGS.ITEMS_PER_PAGE;
-  const end = start + PAGINATION_SETTINGS.ITEMS_PER_PAGE;
-  const pageImages = images.slice(start, end);
-
-  // 3. Render table rows (only for the current page)
+// MODIFIED: applyRender now just renders the paged images it's given
+function applyRender(pageImages) {
+  // 1. Render table rows
   imageTableBody.innerHTML = '';
   if (pageImages.length === 0) {
-    // If no results, show a message
     const row = imageTableBody.insertRow();
     const cell = row.insertCell();
     cell.colSpan = 4;
@@ -146,7 +127,8 @@ function applyRender(images) {
       
       const keywordsCell = row.insertCell();
       keywordsCell.className = 'tags-cell';
-      image.keywords.forEach(keyword => {
+      // image.keywords is already an array from the query function
+      (image.keywords || []).forEach(keyword => { 
         const span = document.createElement('span');
         span.className = 'tag-chip';
         span.textContent = keyword;
@@ -155,14 +137,13 @@ function applyRender(images) {
     });
   }
   
-  // 4. Update UI counts and render pagination
-  resultsCountEl.textContent = images.length;
+  // 2. Update UI counts and render pagination
+  resultsCountEl.textContent = PAGINATION_SETTINGS.totalResults;
   renderPagination();
 }
 
 // Function to clear all filters and results
 function clearResults() {
-  // Reset pagination state
   PAGINATION_SETTINGS.currentPage = 1;
   PAGINATION_SETTINGS.totalResults = 0;
 
@@ -173,17 +154,18 @@ function clearResults() {
 
   resultsCountEl.textContent = 0;
   imageTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:#6b7280;">Click Search to view results.</td></tr>';
-  paginationControlsEl.style.display = 'none'; // Hide pagination
+  paginationControlsEl.style.display = 'none';
   hasSearched = false;
 }
 
-// Function to perform filtering and rendering
-function performSearch(resetPage = true) {
+// MODIFIED: performSearch is now async and calls the DB query
+async function performSearch(resetPage = true) {
   if (resetPage) {
-    PAGINATION_SETTINGS.currentPage = 1; // Always reset to page 1 for a new search
+    PAGINATION_SETTINGS.currentPage = 1; 
     hasSearched = true;
   }
 
+  // 1. Get filters from UI
   const searchKeywordsStr = keywordsInput.value.toLowerCase().trim();
   const searchKeywords = searchKeywordsStr ? searchKeywordsStr.split(/[\s,]+/).filter(k => k.length > 0) : [];
   const searchMode = keywordModeSelect.value;
@@ -191,37 +173,32 @@ function performSearch(resetPage = true) {
   const endDate = endDateInput.value;
   const searchUser = userInput.value.toLowerCase().trim();
 
-  const filteredImages = IMAGES.filter(image => {
-    // Filter by Date
-    if (startDate && image.date < startDate) return false;
-    if (endDate && image.date > endDate) return false;
+  // 2. Build filter object
+  const filters = {
+    searchKeywords,
+    searchMode,
+    startDate: startDate || null,
+    endDate: endDate || null,
+    searchUser: searchUser || null,
+    page: PAGINATION_SETTINGS.currentPage,
+    itemsPerPage: PAGINATION_SETTINGS.ITEMS_PER_PAGE
+  };
 
-    // Filter by User
-    if (searchUser && image.user.toLowerCase() !== searchUser) return false;
+  // 3. Call the global query function from the HTML script
+  try {
+    const { totalResults, images } = await window.queryDatabase(filters);
 
-    // Filter by Keywords (OCR)
-    if (searchKeywords.length > 0) {
-      const imgKeywords = image.keywords.map(k => k.toLowerCase());
-
-      if (searchMode === 'AND') {
-        // AND: all search keywords must be present
-        for (const k of searchKeywords) {
-          if (!imgKeywords.includes(k)) return false;
-        }
-      } else {
-        // OR: at least one search keyword must be present
-        let any = false;
-        for (const k of searchKeywords) {
-          if (imgKeywords.includes(k)) { any = true; break; }
-        }
-        if (!any) return false;
-      }
-    }
-
-    return true;
-  });
-
-  applyRender(filteredImages);
+    // 4. Update pagination state
+    PAGINATION_SETTINGS.totalResults = totalResults;
+    PAGINATION_SETTINGS.totalPages = Math.ceil(totalResults / PAGINATION_SETTINGS.ITEMS_PER_PAGE);
+    
+    // 5. Render results (images is already the paged list)
+    applyRender(images); 
+  
+  } catch (err) {
+    console.error('Error performing search:', err);
+    imageTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:red;">An error occurred during search.</td></tr>';
+  }
 }
 
 clearFiltersBtn.addEventListener('click', () => {
@@ -234,7 +211,7 @@ if (searchBtn) searchBtn.addEventListener('click', () => {
   performSearch(true);
 });
 
-// Allow Enter to trigger Search when focused in text inputs
+// Allow Enter to trigger Search
 ['keywordsInput', 'startDate', 'endDate', 'userInput'].forEach(id => {
   const el = document.getElementById(id);
   if (!el) return;
@@ -246,6 +223,21 @@ if (searchBtn) searchBtn.addEventListener('click', () => {
   });
 });
 
-// Initialize UI
-registeredCountEl.textContent = IMAGES.length;
-clearResults(); // Start with empty results and 'Click Search' message
+// NEW: Function to update the total registered count
+async function updateRegisteredCount() {
+    try {
+        const count = await window.getRegisteredCount();
+        registeredCountEl.textContent = count;
+    } catch (e) {
+        console.error('Could not get registered count:', e);
+        registeredCountEl.textContent = 'N/A';
+    }
+}
+
+// MODIFIED: Initialize UI
+async function initializeApp() {
+    await updateRegisteredCount();
+    clearResults(); // Start with empty results and 'Click Search' message
+}
+
+initializeApp(); // Call the new async init function

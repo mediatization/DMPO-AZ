@@ -24,6 +24,78 @@
         </div>
       </main>
     </div>
-    <script type="module" src="./imageDetail.js"></script>
-  </body>
+
+    <script type="module">
+        const sqlite3 = require('sqlite3').verbose();
+        const db = new sqlite3.Database('imgDb'); // Connect to the same database
+
+        function qs(name) {
+          const params = new URLSearchParams(window.location.search);
+          return params.get(name);
+        }
+
+        async function findImageById(id) {
+            const query = "SELECT * FROM Images WHERE id = ?";
+            return new Promise((resolve, reject) => {
+                // Use .get for a single row
+                db.get(query, [id], (err, row) => {
+                    if (err) {
+                        reject(err);
+                    } else {
+                        resolve(row); // 'row' will be the image object or undefined
+                    }
+                });
+            });
+        }
+
+        function renderMetadata(image) {
+          const dl = document.getElementById('metaList');
+          dl.innerHTML = '';
+          function add(k, v) {
+            const dt = document.createElement('dt'); dt.textContent = k;
+            const dd = document.createElement('dd'); dd.textContent = v;
+            dl.appendChild(dt); dl.appendChild(dd);
+          }
+          
+          let keywordsList = [];
+          try {
+            keywordsList = JSON.parse(image.keywords || '[]');
+          } catch (e) { /* ignore parse error */ }
+
+          add('ID', image.id);
+          add('Filename', image.filename);
+          add('Full Path', image.imgPath);
+          add('Date', image.date);
+          add('User', image.user || '—');
+          add('Keywords', keywordsList.join(', '));
+        }
+
+        async function loadDetail() {
+            const id = qs('id');
+            if (!id) {
+                document.getElementById('title').textContent = 'No ID provided';
+                return;
+            }
+
+            try {
+                const image = await findImageById(id);
+                if (!image) {
+                    document.getElementById('title').textContent = 'Image not found';
+                } else {
+                    document.getElementById('title').textContent = image.filename;
+                    const fullImage = document.getElementById('fullImage');
+                    // Use 'file://' protocol
+                    fullImage.src = 'file://' + image.imgPath; 
+                    fullImage.alt = image.filename;
+                    renderMetadata(image);
+                }
+            } catch (err) {
+                console.error('Failed to load image:', err);
+                document.getElementById('title').textContent = 'Error loading image';
+            }
+        }
+
+        loadDetail();
+    </script>
+    </body>
 </html>
