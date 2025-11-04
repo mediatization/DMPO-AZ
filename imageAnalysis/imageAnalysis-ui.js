@@ -234,10 +234,18 @@ async function updateRegisteredCount() {
     }
 }
 
-// MODIFIED: Initialize UI
 async function initializeApp() {
-    await updateRegisteredCount();
-    clearResults(); // Start with empty results and 'Click Search' message
+    // Call the main init function from imageAnalysis.html
+    if (window.runAppInitialization) {
+        clearResults(); // Show "Click Search" message temporarily
+        // This will now scan, update count, and run the first search
+        await window.runAppInitialization(); 
+    } else {
+        // Fallback if the main script didn't load right
+        console.error("Main initialization function not found.");
+        await updateRegisteredCount();
+        clearResults(); 
+    }
 }
 
 initializeApp(); // Call the new async init function
