@@ -4,6 +4,9 @@ const { ipcRenderer } = require('electron/renderer');
 
 let data = [];
 let canCensor = false;
+
+let enforceSecurityCleanup = false; // Default to true
+
 // track per-key download progress: { '<key>': { downloaded, total } }
 let downloadProgress = {}
 
@@ -44,6 +47,12 @@ function main() {
         canCensor = args
         render()
     })
+
+    ipcRenderer.on("update-security-settings", (e, args) => { 
+        enforceSecurityCleanup = args.enforceSecurityCleanup;
+    });
+
+
     ipcRenderer.on("update-data", (e, args) => { 
         data = args
         render()
@@ -124,7 +133,9 @@ function main() {
         // }) 
         electron.ipcRenderer.invoke("is-online")
         .then(online => {
-            if (online && data.some(d => (d.decryptedCount && d.decryptedCount != 0) || (d.cleanedAutomatedCount && d.cleanedAutomatedCount != 0))) {
+            // *** MODIFICATION START ***
+            if (enforceSecurityCleanup && online && data.some(d => (d.decryptedCount && d.decryptedCount != 0) || (d.cleanedAutomatedCount && d.cleanedAutomatedCount != 0))) {
+            // *** MODIFICATION END ***
                 document.getElementById("online-warning").innerText = "WARNING: Decrypted / Automatically Censored Images detected while Online"
                 document.getElementById("online-warning").style.display = "inline-block"
                 document.getElementById("decrypt-all-button").style.display = "none"

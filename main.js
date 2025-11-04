@@ -206,6 +206,9 @@ ipcMain.handle("fetch-data", async (event, args) => {
     }
     event.sender.send("update-status", "Checking local folders..")
     data = await updateLocalFiles(data)
+
+    event.sender.send("update-security-settings", { enforceSecurityCleanup: !!settings.enforceSecurityCleanup });
+   
     event.sender.send("update-data", data)
     event.sender.send("update-status", "Updated")
     return data
@@ -301,14 +304,17 @@ const isOnline = async () => {
 
 ipcMain.handle("decrypt-for-user", async (event, args) => {
     // Don't allow decrypt while online
-    try {
-        await checkInternetConnected()
-        dialog.showErrorBox("Online Error", "Cannot decrypt while connected to the internet")
-        decryptionQueue = []
-        return;
-    } catch (e) {
-        // offline -> proceed
+    if (settings.enforceSecurityCleanup) {
+        try {
+            await checkInternetConnected()
+            dialog.showErrorBox("Online Error", "Cannot decrypt while connected to the internet")
+            decryptionQueue = []
+            return;
+        } catch (e) {
+            // offline -> proceed
+        }
     }
+    // *** MODIFICATION END ***
 
     // Queue the decryption request and process sequentially
     decryptionQueue.push([event, args])
@@ -501,11 +507,25 @@ const cleanupEphemeral = () => {
 }
 
 app.on('before-quit', () => {
-    cleanupEphemeral()
+    if (settings.enforceSecurityCleanup) {
+        cleanupEphemeral()
+    }
 })
 
-process.on('SIGINT', () => { cleanupEphemeral(); process.exit(0) })
-process.on('uncaughtException', (err) => { console.error('uncaughtException', err); cleanupEphemeral(); process.exit(1) })
+process.on('SIGINT', () => { 
+    if (settings.enforceSecurityCleanup) {
+        cleanupEphemeral(); 
+    }
+    process.exit(0) 
+})
+process.on('uncaughtException', (err) => { 
+    console.error('uncaughtException', err); 
+    if (settings.enforceSecurityCleanup) {
+        cleanupEphemeral(); 
+    }
+    process.exit(1) 
+})
+// *** MODIFICATION END ***
 
 
 ipcMain.handle("open-image-analysis", async (event, args) => {
