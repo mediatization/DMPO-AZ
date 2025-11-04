@@ -1,5 +1,5 @@
 const { app, BrowserWindow, ipcMain, dialog, ipcRenderer, shell } = require("electron");
-const fs = require("fs")
+const fs = require("fs");
 const Storage = require("@azure/storage-blob");
 const { timePassedFromDate } = require("./util");
 const checkInternetConnected = require('check-internet-connected');
@@ -7,6 +7,12 @@ const bcrypt = require('bcryptjs');
 const os = require('os');
 const { Downloader } = require("./downloader");
 const crypto = require('crypto');
+const { createWorker } = require('tesseract.js');
+const { resolve } = require("path");
+const spawn = require("child_process").spawn;
+const QRCode = require("qrcode");
+const { exec } = require('child_process');
+const path = require('path');
 
 let decryptionQueue = []
 let censoringQueue = []
@@ -27,13 +33,11 @@ const AZURE_ACC_KEY = settings.accountKey
 // Create the BlobServiceClient object with connection string
 const blobServiceClient = new Storage.BlobServiceClient(AZURE_ACC_URL, new Storage.StorageSharedKeyCredential( AZURE_ACC_NAME, AZURE_ACC_KEY));
 
-const { resolve } = require("path");
 const pythonPath = resolve("../censoring-scripts/venv/Scripts/python.exe")
 const scriptPath = resolve("../censoring-scripts/main.py")
 
 const CANCENSOR = fs.existsSync(pythonPath) && fs.existsSync(scriptPath)
 
-const spawn = require("child_process").spawn;
 
 let data = [];
 let win;
@@ -362,12 +366,63 @@ const decrypt = async (event, args) => {
         if (decryptionQueue.length > 0) {
             decrypt(decryptionQueue[0][0], decryptionQueue[0][1], past)
         }
+        /*
+        //if we want decryption and database registration to happen at the same
+        //time, will have to revisit
+        else {
+            addToDb(destFolderName);
+            
+        }
+        */
         if (code == 0 && args.acensor) {
             event.sender.send("start-automated-censoring", args)
         }
         triggerUpdateLocalFiles()
     })
 }
+
+//currently defunct, if we want image decryption and storing to database to happen on homepage may be useful
+const addToDb = async (folderPath) => {
+    console.log("adding to db!");
+
+    // create worker 
+    const worker = await createWorker({
+        workerPath: path.join(__dirname, 'node_modules', 'tesseract.js', 'dist', 'worker.min.js'),
+        corePath: path.join(__dirname, 'node_modules', 'tesseract.js-core'),
+        langPath: path.join(__dirname, '.'), 
+        //logger: m => console.log(m),
+        gzip: false,
+        workerBlobURL: false
+    });
+
+    // proper load/init sequence for Node
+    await worker.load();
+    await worker.loadLanguage('eng');
+    await worker.initialize('eng');
+
+    try {
+        const files = await fs.promises.readdir(folderPath);
+        for (const file of files) {
+            const fullPath = path.join(folderPath, file);
+            const stats = await fs.promises.stat(fullPath);
+            if (!stats.isFile()) continue;
+
+            console.log('Found file:', fullPath);
+            // run recognition on this file (synchronously per file)
+            try {
+                const { data: { text } } = await worker.recognize(fullPath);
+                console.log('OCR result for', file, '\n', text);
+                // ... do DB insert or whatever you need here ...
+            } catch (ocrErr) {
+                console.error('OCR failure for', fullPath, ocrErr);
+            }
+        }
+    } catch (err) {
+        console.error('Error reading directory or files:', err);
+    } finally {
+        await worker.terminate();
+    }
+};
 
 ipcMain.handle("censor-for-user", async (event, args) => {
     // Queue the censoring request (no online gating)
@@ -452,7 +507,6 @@ app.on('before-quit', () => {
 process.on('SIGINT', () => { cleanupEphemeral(); process.exit(0) })
 process.on('uncaughtException', (err) => { console.error('uncaughtException', err); cleanupEphemeral(); process.exit(1) })
 
-const QRCode = require("qrcode")
 
 ipcMain.handle("open-image-analysis", async (event, args) => {
     const res = await waitForPassphrase()
@@ -599,8 +653,6 @@ ipcMain.handle("clear-bucket", async (event, args) => {
     }
 });
 
-const { exec } = require('child_process');
-const path = require('path');
 
 const build = (key, args) =>
 {
