@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Image Detail</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="page-header">
+        <h1 id="title">Image Detail</h1>
+        <p class="muted"><a href="./imageAnalysis.html">← Back to images</a></p>
+      </header>
+
+      <main style="margin-top:12px">
+        <div id="detailWrap" style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+          <div style="flex:1 1 600px;">
+            <img id="fullImage" src="" alt="Full image" style="max-width:100%;border:1px solid #e6e9ee;border-radius:6px" />
+          </div>
+          <aside style="width:320px;background:#fff;border:1px solid #e6e9ee;padding:12px;border-radius:6px">
+            <h3>Metadata</h3>
+            <dl id="metaList"></dl>
+          </aside>
+        </div>
+      </main>
+    </div>
+
+    <script type="module">
+        const sqlite3 = require('sqlite3').verbose();
+        const db = new sqlite3.Database('imgDb'); // Connect to the same database
+
+        function qs(name) {
+          const params = new URLSearchParams(window.location.search);
+          return params.get(name);
+        }
+
+        async function findImageById(id) {
+            const query = "SELECT * FROM Images WHERE id = ?";
+            return new Promise((resolve, reject) => {
+                // Use .get for a single row
+                db.get(query, [id], (err, row) => {
+                    if (err) {
+                        reject(err);
+                    } else {
+                        resolve(row); // 'row' will be the image object or undefined
+                    }
+                });
+            });
+        }
+
+        function renderMetadata(image) {
+          const dl = document.getElementById('metaList');
+          dl.innerHTML = '';
+          function add(k, v) {
+            const dt = document.createElement('dt'); dt.textContent = k;
+            const dd = document.createElement('dd'); dd.textContent = v;
+            dl.appendChild(dt); dl.appendChild(dd);
+          }
+          
+          let keywordsList = [];
+          try {
+            keywordsList = JSON.parse(image.keywords || '[]');
+          } catch (e) { /* ignore parse error */ }
+
+          add('ID', image.id);
+          add('Filename', image.filename);
+          add('Full Path', image.imgPath);
+          add('Date', image.date);
+          add('User', image.user || '—');
+          add('Keywords', keywordsList.join(', '));
+        }
+
+        async function loadDetail() {
+            const id = qs('id');
+            if (!id) {
+                document.getElementById('title').textContent = 'No ID provided';
+                return;
+            }
+
+            try {
+                const image = await findImageById(id);
+                if (!image) {
+                    document.getElementById('title').textContent = 'Image not found';
+                } else {
+                    document.getElementById('title').textContent = image.filename;
+                    const fullImage = document.getElementById('fullImage');
+                    // Use 'file://' protocol
+                    fullImage.src = 'file://' + image.imgPath; 
+                    fullImage.alt = image.filename;
+                    renderMetadata(image);
+                }
+            } catch (err) {
+                console.error('Failed to load image:', err);
+                document.getElementById('title').textContent = 'Error loading image';
+            }
+        }
+
+        loadDetail();
+    </script>
+    </body>
+</html>
