@@ -119,7 +119,7 @@
                 FOREIGN KEY (imgId) REFERENCES Images(id) ON DELETE CASCADE
             )`);
             db.run(`CREATE TABLE IF NOT EXISTS Tags (
-                id INTEGER PRIMARY KEY AUTOINCREMENT
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 tag TEXT NOT NULL UNIQUE
             )`);
             db.run(`CREATE TABLE IF NOT EXISTS ImageTags (
@@ -127,8 +127,8 @@
                 tagId INTEGER NOT NULL,
                 PRIMARY KEY(imgId, tagId),
                 FOREIGN KEY (imgId) REFERENCES Images(id) ON DELETE CASCADE,
-                FOREIGN KEY (tagId) REFERENCES Tags(id) ON DELETE CASCADE,
-            )`)
+                FOREIGN KEY (tagId) REFERENCES Tags(id) ON DELETE CASCADE
+            )`);
         });
 
         const prepositions = new Set(["about", "above", "across", "after", "against", "along", "among", "around", "before", "behind", "below", "beneath", "beside", "between", "beyond", "despite", "down", "during", "except", "for", "from", "inside", "into", "like", "near", "off", "onto", "opposite", "out", "outside", "over", "past", "round", "since", "than", "through", "toward", "under", "underneath", "unlike", "until", "upon", "via", "with", "within", "without"]);
