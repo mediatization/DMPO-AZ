@@ -49,6 +49,19 @@
                     </div>
 
                     <div class="control-group">
+                        <label for="tagsInput">Tags</label>
+                        <input id="tagsInput" type="search" placeholder="Enter tags (comma or space separated)" />
+                    </div>
+
+                    <div class="control-group">
+                        <label for="tagMode">Tag Search Mode</label>
+                        <select id="tagMode">
+                            <option value="AND">All tags (AND)</option>
+                            <option value="OR">Any tag (OR)</option>
+                        </select>
+                    </div>
+
+                    <div class="control-group">
                         <label for="startDate">Date Range</label>
                         <div style="display:flex;gap:4px">
                             <input id="startDate" type="date" placeholder="Start Date" />
@@ -70,12 +83,20 @@
                 <main class="right-panel">
                     <div class="table-wrap">
                         <table class="image-table" aria-label="Images table">
+                            <colgroup>
+                                <col style="width:120px">
+                                <col style="width:140px">
+                                <col style="width:140px">
+                                <col style="min-width:160px">
+                                <col style="min-width:160px">
+                            </colgroup>
                             <thead>
                                     <tr>
                                         <th>Preview</th>
                                         <th>Timestamp</th>
                                         <th>User</th>
                                         <th>Keywords</th>
+                                        <th>Tags</th>
                                     </tr>
                             </thead>
                             <tbody id="imageTableBody">
@@ -102,7 +123,7 @@
         
         const db = new sqlite3.Database('imgDb'); // Connects to ./imgDb
 
-        // Our schema (unchanged)
+        // Updated schema with tags and notes
         db.serialize(() => {
             db.run(`CREATE TABLE IF NOT EXISTS Images (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -110,7 +131,9 @@
                 imgPath TEXT NOT NULL UNIQUE, 
                 date TEXT, 
                 user TEXT, 
-                keywords TEXT 
+                keywords TEXT,
+                tags TEXT DEFAULT '[]',
+                notes TEXT DEFAULT ''
             )`);
             db.run(`CREATE TABLE IF NOT EXISTS ImageWords (
                 imgId INTEGER NOT NULL, 
@@ -294,7 +317,7 @@
 
         // (Unchanged)
         window.queryDatabase = async (filters) => {
-            const { searchKeywords, searchMode, startDate, endDate, searchUser, page, itemsPerPage } = filters;
+            const { searchKeywords, searchMode, searchTags, tagMode, startDate, endDate, searchUser, page, itemsPerPage } = filters;
             const queryParams = [];
             let baseQuery = `SELECT DISTINCT T1.id FROM Images AS T1`;
             let joinClause = '';
@@ -304,6 +327,14 @@
                 const placeholders = searchKeywords.map(() => '?').join(',');
                 whereClauses.push(`T2.word IN (${placeholders})`);
                 queryParams.push(...searchKeywords);
+            }
+            if (searchTags && searchTags.length > 0) {
+                // Case-insensitive match against the JSON-encoded tags field
+                const tagConditions = searchTags.map(tag => {
+                    queryParams.push(`%\"${String(tag).toLowerCase()}\"%`);
+                    return `LOWER(T1.tags) LIKE ?`;
+                });
+                whereClauses.push(`(${tagConditions.join(tagMode === 'AND' ? ' AND ' : ' OR ')})`);
             }
             if (startDate) {
                 whereClauses.push(`T1.date >= ?`);
@@ -347,7 +378,7 @@
             const ids = idRows.map(r => r.id);
             const idPlaceholders = ids.map(() => '?').join(',');
             const dataQuery = `
-                SELECT id, filename, imgPath, date, user, keywords 
+                SELECT id, filename, imgPath, date, user, keywords, tags 
                 FROM Images 
                 WHERE id IN (${idPlaceholders})
                 ORDER BY date DESC, id DESC`;
@@ -359,6 +390,11 @@
                     img.keywords = JSON.parse(img.keywords || '[]');
                 } catch (e) {
                     img.keywords = [];
+                }
+                try {
+                    img.tags = JSON.parse(img.tags || '[]');
+                } catch (e) {
+                    img.tags = [];
                 }
                 img.thumbnail = img.imgPath; 
                 img.full = img.imgPath; 
@@ -391,5 +427,7 @@
 
     </script>
     
-    <script type="module" src="./imageAnalysis-ui.js"></script>
+        <script type="module" src="./imageAnalysis-ui.js"></script>
+
+        
 </html>
