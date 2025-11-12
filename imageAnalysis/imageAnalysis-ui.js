@@ -121,9 +121,9 @@ function applyRender(pageImages) {
   } else {
     pageImages.forEach(image => {
       const row = imageTableBody.insertRow();
-      // Insert cells in the exact order of the table header:
+      // Defensive: always create exactly 5 cells in order
       // 1. Preview
-      const thumbCell = document.createElement('td');
+      const thumbCell = row.insertCell();
       const img = document.createElement('img');
       img.className = 'thumb';
       img.alt = `${image.filename} thumbnail`;
@@ -134,73 +134,51 @@ function applyRender(pageImages) {
         window.location.href = url.toString();
       });
       thumbCell.appendChild(img);
-      row.appendChild(thumbCell);
 
       // 2. Timestamp
-      const dateCell = document.createElement('td');
-      dateCell.textContent = image.date;
-      row.appendChild(dateCell);
+      const dateCell = row.insertCell();
+      dateCell.textContent = image.date || '';
 
       // 3. User
-      const userCell = document.createElement('td');
-      userCell.textContent = image.user;
-      row.appendChild(userCell);
+      const userCell = row.insertCell();
+      userCell.textContent = image.user || '';
 
-
-      // 4. Keywords (ensure only string keywords, not tags)
-      const keywordsCell = document.createElement('td');
+      // 4. Keywords
+      const keywordsCell = row.insertCell();
       keywordsCell.className = 'keywords-cell';
-      let keywordsArr = Array.isArray(image.keywords) ? image.keywords : [];
-      // Remove any accidental overlap with tags (by value)
-      let tagsArr = [];
-      try {
-        if (Array.isArray(image.tags)) {
-          tagsArr = image.tags;
-        } else if (typeof image.tags === 'string') {
-          if (image.tags.trim().startsWith('[')) {
-            tagsArr = JSON.parse(image.tags);
-          } else if (image.tags.trim().length > 0) {
-            tagsArr = [image.tags.trim()];
-          } else {
-            tagsArr = [];
-          }
-        } else {
-          tagsArr = [];
-        }
-      } catch (e) {
-        tagsArr = [];
-      }
-      // Filter keywords: only strings, not present in tags, and not objects/arrays
-      const tagSet = new Set(tagsArr.map(t => String(t)));
-      keywordsArr.filter(k => typeof k === 'string' && !tagSet.has(k)).forEach(keyword => {
+      const keywordsFlex = document.createElement('div');
+      keywordsFlex.className = 'keywords-flex';
+      (Array.isArray(image.keywords) ? image.keywords : []).forEach(keyword => {
         const span = document.createElement('span');
         span.className = 'tag-chip';
         span.textContent = keyword;
-        keywordsCell.appendChild(span);
+        keywordsFlex.appendChild(span);
       });
-      row.appendChild(keywordsCell);
+      keywordsCell.appendChild(keywordsFlex);
 
-      // 5. Tags (ensure only string tags, not present in keywords)
-      const tagsCell = document.createElement('td');
+      // 5. Tags
+      const tagsCell = row.insertCell();
       tagsCell.className = 'tags-cell';
-      // Remove any accidental overlap with keywords (by value)
-      const keywordSet = new Set(keywordsArr.map(k => String(k)));
-      // Always add a dummy 'hello' tag for debugging
-      const dummySpan = document.createElement('span');
-      dummySpan.className = 'tag-chip manual-tag';
-      dummySpan.textContent = 'hello';
-      tagsCell.appendChild(dummySpan);
-      tagsArr.filter(tag => typeof tag === 'string' && !keywordSet.has(tag)).forEach(tag => {
+      const tagsFlex = document.createElement('div');
+      tagsFlex.className = 'tags-flex';
+      (Array.isArray(image.tags) ? image.tags : []).forEach(tag => {
         const span = document.createElement('span');
         span.className = 'tag-chip manual-tag';
         span.textContent = tag;
-        tagsCell.appendChild(span);
+        tagsFlex.appendChild(span);
       });
-      row.appendChild(tagsCell);
-      
+      tagsCell.appendChild(tagsFlex);
+
+      // Defensive: ensure row has exactly 5 cells
+      while (row.cells.length < 5) {
+        row.insertCell();
+      }
+      while (row.cells.length > 5) {
+        row.deleteCell(-1);
+      }
     });
   }
-  
+
   // 2. Update UI counts and render pagination
   resultsCountEl.textContent = PAGINATION_SETTINGS.totalResults;
   renderPagination();

@@ -65,8 +65,9 @@ dl#metaList dd { margin:0 0 6px 0; word-break:break-all; overflow-wrap:anywhere;
 /* Allow long keywords/tags to wrap instead of overflowing */
 .keywords-cell, .tags-cell { word-break: break-word; overflow-wrap: anywhere; }
 .thumb{width:100px;height:160px;object-fit:cover;border-radius:4px;border:1px solid var(--border);cursor:pointer}
-.tags-cell{display:flex;gap:8px;flex-wrap:wrap}
-.keywords-cell{display:flex;gap:8px;flex-wrap:wrap}
+.tags-cell{padding:10px;vertical-align:top;}
+.keywords-cell{padding:10px;vertical-align:top;}
+.tags-flex, .keywords-flex { display: flex; gap: 8px; flex-wrap: wrap; }
 .tag-chip{background:#f1f5f9;padding:4px 8px;border-radius:6px;font-size:12px;color:#0f172a}
 
 /* Manual tags style to differentiate from OCR keywords */
