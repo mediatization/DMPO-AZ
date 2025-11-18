@@ -4,7 +4,9 @@
 
 const keywordsInput = document.getElementById('keywordsInput');
 const startDateInput = document.getElementById('startDate');
+const startTimeInput = document.getElementById('startTime');
 const endDateInput = document.getElementById('endDate');
+const endTimeInput = document.getElementById('endTime');
 const userInput = document.getElementById('userInput');
 const keywordModeSelect = document.getElementById('keywordMode');
 const imageTableBody = document.getElementById('imageTableBody');
@@ -137,7 +139,24 @@ function applyRender(pageImages) {
 
       // 2. Timestamp
       const dateCell = row.insertCell();
-      dateCell.textContent = image.date || '';
+      if (image.date) {
+        // Format ISO string to readable date/time
+        const d = new Date(image.date);
+        if (!isNaN(d)) {
+          dateCell.textContent = d.toLocaleString(undefined, {
+            year: 'numeric',
+            month: 'short',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+          });
+        } else {
+          dateCell.textContent = image.date;
+        }
+      } else {
+        dateCell.textContent = '';
+      }
 
       // 3. User
       const userCell = row.insertCell();
@@ -193,6 +212,8 @@ function clearResults() {
   document.getElementById('tagsInput').value = '';
   startDateInput.value = '';
   endDateInput.value = '';
+  if (startTimeInput) startTimeInput.value = '';
+  if (endTimeInput) endTimeInput.value = '';
   userInput.value = '';
 
   resultsCountEl.textContent = 0;
@@ -217,8 +238,21 @@ async function performSearch(resetPage = true) {
   const searchTags = searchTagsStr ? searchTagsStr.split(/[\s,]+/).filter(t => t.length > 0) : [];
   const tagMode = document.getElementById('tagMode').value;
   
-  const startDate = startDateInput.value;
-  const endDate = endDateInput.value;
+  // Compose start and end datetime strings (ISO)
+  let startDate = startDateInput.value;
+  let endDate = endDateInput.value;
+  let startTime = startTimeInput && startTimeInput.value;
+  let endTime = endTimeInput && endTimeInput.value;
+  let startDateTime = null;
+  let endDateTime = null;
+  if (startDate) {
+    startDateTime = startDate;
+    if (startTime) startDateTime += 'T' + startTime;
+  }
+  if (endDate) {
+    endDateTime = endDate;
+    if (endTime) endDateTime += 'T' + endTime;
+  }
   const searchUser = userInput.value.toLowerCase().trim();
 
   // 2. Build filter object
@@ -227,8 +261,8 @@ async function performSearch(resetPage = true) {
     searchMode,
     searchTags,
     tagMode,
-    startDate: startDate || null,
-    endDate: endDate || null,
+    startDate: startDateTime,
+    endDate: endDateTime,
     searchUser: searchUser || null,
     page: PAGINATION_SETTINGS.currentPage,
     itemsPerPage: PAGINATION_SETTINGS.ITEMS_PER_PAGE
@@ -263,6 +297,17 @@ if (searchBtn) searchBtn.addEventListener('click', () => {
 
 // Allow Enter to trigger Search (include tags input)
 ['keywordsInput', 'tagsInput', 'startDate', 'endDate', 'userInput'].forEach(id => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      performSearch(true);
+    }
+  });
+});
+// Also allow Enter on new time fields
+['startTime', 'endTime'].forEach(id => {
   const el = document.getElementById(id);
   if (!el) return;
   el.addEventListener('keydown', (e) => {

@@ -62,10 +62,16 @@
                     </div>
 
                     <div class="control-group">
-                        <label for="startDate">Date Range</label>
-                        <div style="display:flex;gap:4px">
-                            <input id="startDate" type="date" placeholder="Start Date" />
-                            <input id="endDate" type="date" placeholder="End Date" />
+                        <label for="startDate">Date/Time Range</label>
+                        <div style="display:flex;gap:4px;align-items:center">
+                            <label for="startDate" style="font-size:12px;min-width:60px">Start:</label>
+                            <input id="startDate" type="date" placeholder="Start Date" style="flex:1 1 0;" />
+                            <input id="startTime" type="time" step="1" placeholder="Start Time" style="flex:1 1 0;" />
+                        </div>
+                        <div style="display:flex;gap:4px;align-items:center;margin-top:2px">
+                            <label for="endDate" style="font-size:12px;min-width:60px">End:</label>
+                            <input id="endDate" type="date" placeholder="End Date" style="flex:1 1 0;" />
+                            <input id="endTime" type="time" step="1" placeholder="End Time" style="flex:1 1 0;" />
                         </div>
                     </div>
 
