@@ -49,6 +49,19 @@
                     </div>
 
                     <div class="control-group">
+                        <label for="tagsInput">Tags</label>
+                        <input id="tagsInput" type="search" placeholder="Enter tags (comma or space separated)" />
+                    </div>
+
+                    <div class="control-group">
+                        <label for="tagMode">Tag Search Mode</label>
+                        <select id="tagMode">
+                            <option value="AND">All tags (AND)</option>
+                            <option value="OR">Any tag (OR)</option>
+                        </select>
+                    </div>
+
+                    <div class="control-group">
                         <label for="startDate">Date Range</label>
                         <div style="display:flex;gap:4px">
                             <input id="startDate" type="date" placeholder="Start Date" />
@@ -70,12 +83,20 @@
                 <main class="right-panel">
                     <div class="table-wrap">
                         <table class="image-table" aria-label="Images table">
+                            <colgroup>
+                                <col style="width:120px">
+                                <col style="width:140px">
+                                <col style="width:140px">
+                                <col style="min-width:160px">
+                                <col style="min-width:160px">
+                            </colgroup>
                             <thead>
                                     <tr>
                                         <th>Preview</th>
                                         <th>Timestamp</th>
                                         <th>User</th>
                                         <th>Keywords</th>
+                                        <th>Tags</th>
                                     </tr>
                             </thead>
                             <tbody id="imageTableBody">
@@ -135,7 +156,7 @@
             const worker = await Tesseract.createWorker("eng", 1, {
                 workerPath: "../node_modules/tesseract.js/dist/worker.min.js",
                 corePath: "../node_modules/tesseract.js-core/",
-                langPath: "./", // Assumes eng.traineddata is in the same folder
+                langPath: "./",
                 logger: m => {
                     console.log(m);
                     if (m.status === 'recognizing text') {
@@ -177,7 +198,7 @@
                         parseInt(dateString[3]),
                         parseInt(dateString[4]),
                         parseInt(dateString[5]), 
-                        0 //don't have any millisecond data to parse
+                        0 //don't have milliseconds to parse
                     );
                     console.log(dateString);
                     console.log(dateObj);

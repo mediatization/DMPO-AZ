@@ -7,6 +7,7 @@
 }
 
 *{box-sizing:border-box}
+
 body{
     margin:0;
     font-family: Segoe UI, Roboto, Arial, sans-serif;
@@ -37,15 +38,44 @@ button#clearFilters:hover{background:#f1f5f9}
 .tag{background:#fff;color:#0f172a;border:1px solid var(--border);padding:4px 8px;border-radius:6px;cursor:pointer;font-size:13px}
 .tag.active{background:var(--accent);color:white;border-color:transparent}
 
+/* Metadata wrapping for long filenames */
+dl#metaList dt { font-weight:600; margin-top:6px; }
+dl#metaList dd { margin:0 0 6px 0; word-break:break-all; overflow-wrap:anywhere; }
+
+/* Zoom controls */
+#imageFrame { background: #fff }
+#zoomInBtn, #zoomOutBtn, #zoomResetBtn { padding:6px 8px; border-radius:4px; border:1px solid var(--border); background:#fff; cursor:pointer; color: #000 }
+#zoomInBtn:hover, #zoomOutBtn:hover, #zoomResetBtn:hover { background:#f1f5f9; color: #000 }
+
 .table-wrap{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:0;overflow:hidden}
-.image-table{width:100%;border-collapse:collapse}
+.image-table{width:100%;border-collapse:collapse;table-layout:fixed}
 .image-table thead{background:#fff;position:sticky;top:0;z-index:2}
 .image-table th{padding:12px;text-align:left;border-bottom:1px solid var(--border)}
 .image-table tbody tr{border-bottom:1px solid var(--border)}
-.image-table td{padding:10px;vertical-align:middle}
+.image-table td{padding:10px;vertical-align:top}
+
+/* Column widths: preview fixed, timestamp/user small, keywords/tags flexible */
+.image-table th:nth-child(1), .image-table td:nth-child(1) { width: 120px; }
+.image-table th:nth-child(2), .image-table td:nth-child(2) { width: 120px; }
+.image-table th:nth-child(3), .image-table td:nth-child(3) { width: 120px; }
+/* Let the keywords and tags columns share remaining space and have sensible min-width */
+.image-table th:nth-child(4), .image-table td:nth-child(4) { width: auto; min-width: 160px; }
+.image-table th:nth-child(5), .image-table td:nth-child(5) { width: auto; min-width: 160px; }
+
+/* Allow long keywords/tags to wrap instead of overflowing */
+.keywords-cell, .tags-cell { word-break: break-word; overflow-wrap: anywhere; }
 .thumb{width:100px;height:160px;object-fit:cover;border-radius:4px;border:1px solid var(--border);cursor:pointer}
-.tags-cell{display:flex;gap:8px;flex-wrap:wrap}
+.tags-cell{padding:10px;vertical-align:top;}
+.keywords-cell{padding:10px;vertical-align:top;}
+.tags-flex, .keywords-flex { display: flex; gap: 8px; flex-wrap: wrap; }
 .tag-chip{background:#f1f5f9;padding:4px 8px;border-radius:6px;font-size:12px;color:#0f172a}
+
+/* Manual tags style to differentiate from OCR keywords */
+.manual-tag {
+    background-color: #dbeafe;
+    color: #1e40af;
+    border: 1px solid #93c5fd;
+}
 
 .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(2,6,23,0.6)}
 .modal[aria-hidden="false"]{display:flex}

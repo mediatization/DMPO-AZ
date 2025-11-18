@@ -114,29 +114,71 @@ function applyRender(pageImages) {
   if (pageImages.length === 0) {
     const row = imageTableBody.insertRow();
     const cell = row.insertCell();
-    cell.colSpan = 4;
+    cell.colSpan = 5;
     cell.textContent = hasSearched ? 'No images match the criteria.' : 'Click Search to view results.';
     cell.style.textAlign = 'center';
     cell.style.padding = '20px';
   } else {
     pageImages.forEach(image => {
       const row = imageTableBody.insertRow();
-      row.appendChild(makeThumbnailCell(image));
-      row.insertCell().textContent = image.date;
-      row.insertCell().textContent = image.user;
-      
+      // Defensive: always create exactly 5 cells in order
+      // 1. Preview
+      const thumbCell = row.insertCell();
+      const img = document.createElement('img');
+      img.className = 'thumb';
+      img.alt = `${image.filename} thumbnail`;
+      img.src = 'file://' + image.thumbnail;
+      img.addEventListener('click', () => {
+        const url = new URL('./imageDetail.html', window.location.href);
+        url.searchParams.set('id', image.id);
+        window.location.href = url.toString();
+      });
+      thumbCell.appendChild(img);
+
+      // 2. Timestamp
+      const dateCell = row.insertCell();
+      dateCell.textContent = image.date || '';
+
+      // 3. User
+      const userCell = row.insertCell();
+      userCell.textContent = image.user || '';
+
+      // 4. Keywords
       const keywordsCell = row.insertCell();
-      keywordsCell.className = 'tags-cell';
-      // image.keywords is already an array from the query function
-      (image.keywords || []).forEach(keyword => { 
+      keywordsCell.className = 'keywords-cell';
+      const keywordsFlex = document.createElement('div');
+      keywordsFlex.className = 'keywords-flex';
+      (Array.isArray(image.keywords) ? image.keywords : []).forEach(keyword => {
         const span = document.createElement('span');
         span.className = 'tag-chip';
         span.textContent = keyword;
-        keywordsCell.appendChild(span);
+        keywordsFlex.appendChild(span);
       });
+      keywordsCell.appendChild(keywordsFlex);
+
+      // 5. Tags
+      const tagsCell = row.insertCell();
+      tagsCell.className = 'tags-cell';
+      const tagsFlex = document.createElement('div');
+      tagsFlex.className = 'tags-flex';
+      (Array.isArray(image.tags) ? image.tags : []).forEach(tag => {
+        const span = document.createElement('span');
+        span.className = 'tag-chip manual-tag';
+        span.textContent = tag;
+        tagsFlex.appendChild(span);
+      });
+      tagsCell.appendChild(tagsFlex);
+
+      // Defensive: ensure row has exactly 5 cells
+      while (row.cells.length < 5) {
+        row.insertCell();
+      }
+      while (row.cells.length > 5) {
+        row.deleteCell(-1);
+      }
     });
   }
-  
+
   // 2. Update UI counts and render pagination
   resultsCountEl.textContent = PAGINATION_SETTINGS.totalResults;
   renderPagination();
@@ -148,12 +190,13 @@ function clearResults() {
   PAGINATION_SETTINGS.totalResults = 0;
 
   keywordsInput.value = '';
+  document.getElementById('tagsInput').value = '';
   startDateInput.value = '';
   endDateInput.value = '';
   userInput.value = '';
 
   resultsCountEl.textContent = 0;
-  imageTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:#6b7280;">Click Search to view results.</td></tr>';
+  imageTableBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:#6b7280;">Click Search to view results.</td></tr>';
   paginationControlsEl.style.display = 'none';
   hasSearched = false;
 }
@@ -169,6 +212,11 @@ async function performSearch(resetPage = true) {
   const searchKeywordsStr = keywordsInput.value.toLowerCase().trim();
   const searchKeywords = searchKeywordsStr ? searchKeywordsStr.split(/[\s,]+/).filter(k => k.length > 0) : [];
   const searchMode = keywordModeSelect.value;
+  
+  const searchTagsStr = document.getElementById('tagsInput').value.toLowerCase().trim();
+  const searchTags = searchTagsStr ? searchTagsStr.split(/[\s,]+/).filter(t => t.length > 0) : [];
+  const tagMode = document.getElementById('tagMode').value;
+  
   const startDate = startDateInput.value;
   const endDate = endDateInput.value;
   const searchUser = userInput.value.toLowerCase().trim();
@@ -177,6 +225,8 @@ async function performSearch(resetPage = true) {
   const filters = {
     searchKeywords,
     searchMode,
+    searchTags,
+    tagMode,
     startDate: startDate || null,
     endDate: endDate || null,
     searchUser: searchUser || null,
@@ -211,8 +261,8 @@ if (searchBtn) searchBtn.addEventListener('click', () => {
   performSearch(true);
 });
 
-// Allow Enter to trigger Search
-['keywordsInput', 'startDate', 'endDate', 'userInput'].forEach(id => {
+// Allow Enter to trigger Search (include tags input)
+['keywordsInput', 'tagsInput', 'startDate', 'endDate', 'userInput'].forEach(id => {
   const el = document.getElementById(id);
   if (!el) return;
   el.addEventListener('keydown', (e) => {
