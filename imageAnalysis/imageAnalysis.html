@@ -106,7 +106,6 @@
         db.serialize(() => {
             db.run(`CREATE TABLE IF NOT EXISTS Images (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                filename TEXT, 
                 imgPath TEXT NOT NULL UNIQUE, 
                 date TEXT, 
                 user TEXT,
@@ -118,16 +117,11 @@
                 PRIMARY KEY(imgId, word), 
                 FOREIGN KEY (imgId) REFERENCES Images(id) ON DELETE CASCADE
             )`);
-            db.run(`CREATE TABLE IF NOT EXISTS Tags (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                tag TEXT NOT NULL UNIQUE
-            )`);
             db.run(`CREATE TABLE IF NOT EXISTS ImageTags (
                 imgId INTEGER NOT NULL,
-                tagId INTEGER NOT NULL,
-                PRIMARY KEY(imgId, tagId),
-                FOREIGN KEY (imgId) REFERENCES Images(id) ON DELETE CASCADE,
-                FOREIGN KEY (tagId) REFERENCES Tags(id) ON DELETE CASCADE
+                tag TEXT NOT NULL,
+                PRIMARY KEY(imgId, tag),
+                FOREIGN KEY (imgId) REFERENCES Images(id) ON DELETE CASCADE
             )`);
         });
 
@@ -156,8 +150,7 @@
             
             for (let i = 0; i < filePathsToScan.length; i++) {
                 const filePath = filePathsToScan[i];
-                const filename = path.basename(filePath);
-                statusEl.textContent = `File ${i + 1} of ${filePathsToScan.length}: ${filename}`;
+                statusEl.textContent = `File ${i + 1} of ${filePathsToScan.length}: ${filePath}`;
                 
                 let text;
                 try {
@@ -165,7 +158,7 @@
                     const result = await worker.recognize(filePath);
                     text = result.data.text;
                 } catch (e) {
-                    console.error(`Failed to recognize ${filename}:`, e);
+                    console.error(`Failed to recognize ${filePath}:`, e);
                     continue; // Skip this file
                 }
                 
@@ -175,6 +168,7 @@
                     user = filePath.split(path.sep).at(-2); 
 
                     // Parse Date: Assumes filename is like YYYY_MM_DD_HH_MM_SS...
+                    const filename = path.basename(filePath);
                     let dateString = filename.split('_');
                     const dateObj = new Date(
                         parseInt(dateString[0]),
@@ -182,16 +176,19 @@
                         parseInt(dateString[2]),
                         parseInt(dateString[3]),
                         parseInt(dateString[4]),
-                        parseInt(dateString[5]), 0
+                        parseInt(dateString[5]), 
+                        0 //don't have any millisecond data to parse
                     );
-                    isoDate = dateObj.toISOString().split('T')[0]; // Get YYYY-MM-DD
+                    console.log(dateString);
+                    console.log(dateObj);
+                    isoDate = dateObj.toISOString();
                     
                     if (!user || isNaN(dateObj.getTime())) {
                         throw new Error('Invalid path format');
                     }
 
                 } catch (e) {
-                    console.warn(`Could not parse user/date for ${filename}. Skipping.`);
+                    console.warn(`Could not parse user/date for ${filePath}. Skipping.`);
                     continue; // Skip file if path format is wrong
                 }
 
@@ -209,13 +206,13 @@
 
                 // Insert into DB 
                 const lastID = await new Promise((resolve, reject) => {
-                    db.run(`INSERT INTO Images (filename, imgPath, date, user) VALUES (?, ?, ?, ?)`, 
-                        [filename, filePath, isoDate, user], 
+                    db.run(`INSERT INTO Images (imgPath, date, user) VALUES (?, ?, ?, ?)`, 
+                        [filePath, isoDate, user], 
                         function(err) {
                             if (err) {
                                 console.error('DB Insert Error (Images):', err.message);
                                 if (err.message.includes('UNIQUE constraint failed')) {
-                                    statusEl.textContent = `Skipped: ${filename} (already processed).`;
+                                    statusEl.textContent = `Skipped: ${filePath} (already processed).`;
                                 }
                                 resolve(null); // Resolve with null on error
                             } else {
@@ -350,7 +347,7 @@
             const ids = idRows.map(r => r.id);
             const idPlaceholders = ids.map(() => '?').join(',');
             const dataQuery = `
-                SELECT id, filename, imgPath, date, user
+                SELECT id, imgPath, date, user
                 FROM Images 
                 WHERE id IN (${idPlaceholders})
                 ORDER BY date DESC, id DESC`;
