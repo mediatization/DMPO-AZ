@@ -130,7 +130,7 @@
                 imgPath TEXT NOT NULL UNIQUE, 
                 date TEXT, 
                 user TEXT,
-                note TEXT
+                notes TEXT DEFAULT ''
             )`);
             db.run(`CREATE TABLE IF NOT EXISTS ImageWords (
                 imgId INTEGER NOT NULL, 
@@ -138,11 +138,16 @@
                 PRIMARY KEY(imgId, word), 
                 FOREIGN KEY (imgId) REFERENCES Images(id) ON DELETE CASCADE
             )`);
+            db.run(`CREATE TABLE IF NOT EXISTS Tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tag TEXT NOT NULL UNIQUE
+            )`);
             db.run(`CREATE TABLE IF NOT EXISTS ImageTags (
                 imgId INTEGER NOT NULL,
-                tag TEXT NOT NULL,
-                PRIMARY KEY(imgId, tag),
-                FOREIGN KEY (imgId) REFERENCES Images(id) ON DELETE CASCADE
+                tagId INTEGER NOT NULL,
+                PRIMARY KEY(imgId, tagId),
+                FOREIGN KEY (imgId) REFERENCES Images(id) ON DELETE CASCADE,
+                FOREIGN KEY (tagId) REFERENCES Tags(id) ON DELETE CASCADE
             )`);
         });
 
@@ -227,7 +232,7 @@
 
                 // Insert into DB 
                 const lastID = await new Promise((resolve, reject) => {
-                    db.run(`INSERT INTO Images (imgPath, date, user) VALUES (?, ?, ?, ?)`, 
+                    db.run(`INSERT INTO Images (imgPath, date, user) VALUES (?, ?, ?)`, 
                         [filePath, isoDate, user], 
                         function(err) {
                             if (err) {
