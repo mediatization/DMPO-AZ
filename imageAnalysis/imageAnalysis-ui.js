@@ -238,21 +238,12 @@ async function performSearch(resetPage = true) {
   const searchTags = searchTagsStr ? searchTagsStr.split(/[\s,]+/).filter(t => t.length > 0) : [];
   const tagMode = document.getElementById('tagMode').value;
   
-  // Compose start and end datetime strings (ISO)
-  let startDate = startDateInput.value;
-  let endDate = endDateInput.value;
-  let startTime = startTimeInput && startTimeInput.value;
-  let endTime = endTimeInput && endTimeInput.value;
-  let startDateTime = null;
-  let endDateTime = null;
-  if (startDate) {
-    startDateTime = startDate;
-    if (startTime) startDateTime += 'T' + startTime;
-  }
-  if (endDate) {
-    endDateTime = endDate;
-    if (endTime) endDateTime += 'T' + endTime;
-  }
+  // MODIFIED: Separation of Date and Time
+  const startDate = startDateInput.value;
+  const endDate = endDateInput.value;
+  const startTime = startTimeInput ? startTimeInput.value : '';
+  const endTime = endTimeInput ? endTimeInput.value : '';
+  
   const searchUser = userInput.value.toLowerCase().trim();
 
   // 2. Build filter object
@@ -261,8 +252,10 @@ async function performSearch(resetPage = true) {
     searchMode,
     searchTags,
     tagMode,
-    startDate: startDateTime,
-    endDate: endDateTime,
+    startDate, 
+    endDate,
+    startTime, 
+    endTime,
     searchUser: searchUser || null,
     page: PAGINATION_SETTINGS.currentPage,
     itemsPerPage: PAGINATION_SETTINGS.ITEMS_PER_PAGE
