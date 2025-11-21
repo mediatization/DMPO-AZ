@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html>
   <head>
@@ -26,22 +25,24 @@
               <span id="zoomLevel" style="margin-left:8px;font-size:13px;color:var(--muted)">100%</span>
             </div>
 
-            <!-- Notes moved below image: larger by default -->
             <div id="notesPanel" style="margin-top:12px;">
               <h4 style="margin:6px 0">Notes</h4>
               <textarea id="notesBox" rows="16" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:13px;resize:vertical;min-height:300px"></textarea>
               <div id="notesStatus" style="font-size:12px;color:var(--muted);margin-top:6px">Auto-saved</div>
             </div>
           </div>
-          <!-- Right column: metadata above, Tags/Notes below -->
           <div style="display:flex;flex-direction:column;gap:12px;width:320px;">
             <aside style="background:#fff;border:1px solid #e6e9ee;padding:12px;border-radius:6px">
+              
+              <button id="contextSearchBtn" style="display:none; width:100%; margin-bottom:16px; background: #2563eb; color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: 600; align-items: center; justify-content: center; gap: 6px;">
+                Search Context (±15m)
+              </button>
+
               <h3>Metadata</h3>
               <dl id="metaList"></dl>
             </aside>
 
             <aside id="tagsNotesPanel" style="background:#fff;border:1px solid #e6e9ee;padding:12px;border-radius:6px">
-              <!-- Tags section -->
               <div>
                 <h4 style="margin:6px 0">Tags</h4>
                 <div id="tagsContainer" class="tag-list" aria-live="polite" style="min-height:36px"></div>
@@ -52,8 +53,7 @@
                 </div>
               </div>
 
-              <!-- Notes removed from here; placed under image for more space -->
-            </aside>
+              </aside>
           </div>
         </div>
       </main>
@@ -97,7 +97,7 @@
           } catch (e) { /* ignore parse error */ }
 
           add('ID', image.id);
-          add('Filename', image.filename);
+          add('Filename', image.filename || image.imgPath.split(/[\\/]/).pop());
           add('Full Path', image.imgPath);
           // Format date for display
           let formattedDate = image.date;
@@ -118,6 +118,49 @@
           add('User', image.user || '—');
           add('Keywords', keywordsList.join(', '));
         }
+
+        // --- NEW: Helpers for Context Search Button ---
+        function getLocalTimeStrings(dateObj) {
+            const year = dateObj.getFullYear();
+            const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const day = String(dateObj.getDate()).padStart(2, '0');
+            const hours = String(dateObj.getHours()).padStart(2, '0');
+            const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+            const seconds = String(dateObj.getSeconds()).padStart(2, '0');
+            return {
+                date: `${year}-${month}-${day}`,
+                time: `${hours}:${minutes}:${seconds}`
+            };
+        }
+
+        function setupContextSearch(image) {
+            const btn = document.getElementById('contextSearchBtn');
+            if (!image.date || !image.user) return;
+
+            const imgDate = new Date(image.date);
+            if (isNaN(imgDate.getTime())) return;
+
+            btn.style.display = 'flex';
+            btn.addEventListener('click', () => {
+                // Calculate -15 mins and +15 mins
+                const startObj = new Date(imgDate.getTime() - 15 * 60000);
+                const endObj = new Date(imgDate.getTime() + 15 * 60000);
+
+                const startStr = getLocalTimeStrings(startObj);
+                const endStr = getLocalTimeStrings(endObj);
+
+                const params = new URLSearchParams();
+                params.set('user', image.user);
+                params.set('startDate', startStr.date);
+                params.set('startTime', startStr.time);
+                params.set('endDate', endStr.date);
+                params.set('endTime', endStr.time);
+                params.set('autoSearch', 'true'); 
+
+                window.location.href = './imageAnalysis.html?' + params.toString();
+            });
+        }
+        // ------------------------------------------------
 
         // Image zoom/pan handling
         let currentScale = 0.4;
@@ -146,18 +189,24 @@
                 if (!image) {
                     document.getElementById('title').textContent = 'Image not found';
                 } else {
-                    document.getElementById('title').textContent = image.filename;
+                    const fname = image.filename || image.imgPath.split(/[\\/]/).pop();
+                    document.getElementById('title').textContent = fname;
                     const fullImage = document.getElementById('fullImage');
                     // Use 'file://' protocol
                     fullImage.src = 'file://' + image.imgPath; 
-                    fullImage.alt = image.filename;
-          renderMetadata(image);
-          // Render tags and notes UI
-          renderTagsAndNotes(image);
+                    fullImage.alt = fname;
+                    
+                    renderMetadata(image);
+                    // Render tags and notes UI
+                    renderTagsAndNotes(image);
+                    
+                    // NEW: Initialize Context Button
+                    setupContextSearch(image);
+
                     // reset zoom to default 40% for new image
                     setScale(0.4);
-          // populate global tag suggestions
-          try { await loadAllTags(); } catch (e) { /* ignore */ }
+                    // populate global tag suggestions
+                    try { await loadAllTags(); } catch (e) { /* ignore */ }
                 }
             } catch (err) {
                 console.error('Failed to load image:', err);
@@ -195,12 +244,13 @@
 
           // Notes
           const notesBox = document.getElementById('notesBox');
-          notesBox.value = image.notes || '';
+          notesBox.value = image.note || ''; // Fixed: DB column is 'note'
         }
 
         async function loadAllTags() {
           // collect unique tags across DB and populate datalist
           const rows = await new Promise((res, rej) => {
+            // Keeping original logic searching Images table, though Schema added ImageTags table
             db.all(`SELECT tags FROM Images WHERE tags IS NOT NULL AND tags <> ''`, [], (err, rows) => err ? rej(err) : res(rows));
           });
           const set = new Set();
@@ -256,7 +306,7 @@
         let notesTimer = null;
         async function saveNotesToDb(id, notesText) {
           return new Promise((resolve, reject) => {
-            db.run(`UPDATE Images SET notes = ? WHERE id = ?`, [String(notesText || ''), id], function(err) {
+            db.run(`UPDATE Images SET note = ? WHERE id = ?`, [String(notesText || ''), id], function(err) {
               if (err) reject(err);
               else resolve();
             });

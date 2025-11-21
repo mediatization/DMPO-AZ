@@ -447,10 +447,8 @@
                 await window.updateRegisteredCount();
             }
 
-            // Perform an initial search (no filters) to populate the table
-            if (window.performSearch) {
-                window.performSearch(true);
-            }
+            // REMOVED: Automatic search call.
+            // We now rely on imageAnalysis-ui.js to trigger the search once (either with filters or empty).
         };
 
     </script>

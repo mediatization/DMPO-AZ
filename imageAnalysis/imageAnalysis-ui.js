@@ -280,6 +280,8 @@ async function performSearch(resetPage = true) {
 
 clearFiltersBtn.addEventListener('click', () => {
   clearResults();
+  // NEW: Clear URL history so refresh doesn't re-trigger a parameterized search
+  window.history.replaceState({}, document.title, window.location.pathname);
 });
 
 // Search is explicit via button
@@ -323,17 +325,31 @@ async function updateRegisteredCount() {
 }
 
 async function initializeApp() {
-    // Call the main init function from imageAnalysis.html
+    clearResults();
+
+    // 1. Check for URL Parameters (Context Search) FIRST
+    const params = new URLSearchParams(window.location.search);
+    const isAutoSearch = params.has('autoSearch');
+
+    if (isAutoSearch) {
+        if (params.has('user')) userInput.value = params.get('user');
+        if (params.has('startDate')) startDateInput.value = params.get('startDate');
+        if (params.has('startTime')) startTimeInput.value = params.get('startTime');
+        if (params.has('endDate')) endDateInput.value = params.get('endDate');
+        if (params.has('endTime')) endTimeInput.value = params.get('endTime');
+    }
+
+    // 2. Run Scan and Count update (from HTML)
     if (window.runAppInitialization) {
-        clearResults(); // Show "Click Search" message temporarily
-        // This will now scan, update count, and run the first search
         await window.runAppInitialization(); 
     } else {
-        // Fallback if the main script didn't load right
-        console.error("Main initialization function not found.");
         await updateRegisteredCount();
-        clearResults(); 
     }
+
+    // 3. Perform Search (Once)
+    // If isAutoSearch is true, inputs are filled and this searches Context.
+    // If isAutoSearch is false, inputs are empty and this searches All.
+    performSearch(true);
 }
 
 initializeApp(); // Call the new async init function
