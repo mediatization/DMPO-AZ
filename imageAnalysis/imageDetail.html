@@ -253,7 +253,7 @@
 
           // Notes
           const notesBox = document.getElementById('notesBox');
-          notesBox.value = image.note || ''; // Fixed: DB column is 'note'
+          notesBox.value = image.notes || '';
         }
 
         async function loadAllTags() {
@@ -280,7 +280,7 @@
         //otherwise insert tag into the tag table and return the new id
         async function getTagId(tag) {
           const rows = await new Promise((res, rej) => {
-            db.all(`SELECT tag FROM Tags WHERE tag = ?`, [tag], (err, rows) => err ? rej(err) : res(rows));
+            db.all(`SELECT id FROM Tags WHERE tag = ?`, [tag], (err, rows) => err ? rej(err) : res(rows));
           });
 
           if(rows.length === 0) {
@@ -292,7 +292,7 @@
             });
           }
 
-          return rows[0].tag;
+          return rows[0].id;
         }
 
         async function addTag(id, newTag) {
@@ -336,8 +336,8 @@
 
           //updating ui
           const row = await findImageById(id);
-          const tags = await getImageTags(id)
-          tags.filter(t => t !== tagToRemove);
+          let tags = await getImageTags(id);
+          tags = tags.filter(t => t !== tagToRemove);
           await renderTagsAndNotes(Object.assign({}, row, { tags: JSON.stringify(tags) }));
           await loadAllTags();
         }
