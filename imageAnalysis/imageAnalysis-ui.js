@@ -1,7 +1,3 @@
-// REMOVED: import { TAGS, IMAGES } from './imageData.js';
-
-// Simple UI renderer for the prototype. Now queries the DB.
-
 const keywordsInput = document.getElementById('keywordsInput');
 const startDateInput = document.getElementById('startDate');
 const startTimeInput = document.getElementById('startTime');
@@ -109,8 +105,7 @@ function changePage(page) {
   document.querySelector('.table-wrap').scrollTop = 0;
 }
 
-// MODIFIED: applyRender now just renders the paged images it's given
-function applyRender(pageImages) {
+async function applyRender(pageImages) {
   // 1. Render table rows
   imageTableBody.innerHTML = '';
   if (pageImages.length === 0) {
@@ -121,7 +116,7 @@ function applyRender(pageImages) {
     cell.style.textAlign = 'center';
     cell.style.padding = '20px';
   } else {
-    pageImages.forEach(image => {
+    for (let image of pageImages) {
       const row = imageTableBody.insertRow();
       // Defensive: always create exactly 5 cells in order
       // 1. Preview
@@ -180,12 +175,24 @@ function applyRender(pageImages) {
       tagsCell.className = 'tags-cell';
       const tagsFlex = document.createElement('div');
       tagsFlex.className = 'tags-flex';
-      (Array.isArray(image.tags) ? image.tags : []).forEach(tag => {
+
+      const rows = await new Promise((res, rej) => {
+        const sqlite3 = require('sqlite3').verbose();
+        const db = new sqlite3.Database('imgDb');
+        db.all(`SELECT t.tag
+                FROM ImageTags it, tags t 
+                WHERE it.tagId = t.id AND it.imgId = ?`, 
+                [image.id], 
+                (err, rows) => err ? rej(err) : res(rows)
+              );
+      });  
+
+      for (const r of rows) {
         const span = document.createElement('span');
         span.className = 'tag-chip manual-tag';
-        span.textContent = tag;
+        span.textContent = r.tag;
         tagsFlex.appendChild(span);
-      });
+      };
       tagsCell.appendChild(tagsFlex);
 
       // Defensive: ensure row has exactly 5 cells
@@ -195,7 +202,7 @@ function applyRender(pageImages) {
       while (row.cells.length > 5) {
         row.deleteCell(-1);
       }
-    });
+    };
   }
 
   // 2. Update UI counts and render pagination
@@ -270,7 +277,7 @@ async function performSearch(resetPage = true) {
     PAGINATION_SETTINGS.totalPages = Math.ceil(totalResults / PAGINATION_SETTINGS.ITEMS_PER_PAGE);
     
     // 5. Render results (images is already the paged list)
-    applyRender(images); 
+    await applyRender(images); 
   
   } catch (err) {
     console.error('Error performing search:', err);
