@@ -62,10 +62,18 @@
                     </div>
 
                     <div class="control-group">
-                        <label for="startDate">Date Range</label>
-                        <div style="display:flex;gap:4px">
-                            <input id="startDate" type="date" placeholder="Start Date" />
-                            <input id="endDate" type="date" placeholder="End Date" />
+                        <label>Date/Time Range</label>
+                        
+                        <div style="background: #f8fafc; border: 1px solid var(--border); padding: 10px; border-radius: 6px; margin-bottom: 8px;">
+                            <label for="startDate" style="font-size:12px; font-weight:600; color:var(--muted); margin-bottom:6px; display:block">Start Range</label>
+                            <input id="startDate" type="date" aria-label="Start Date" style="width:100%; margin-bottom:6px;" />
+                            <input id="startTime" type="time" step="1" aria-label="Start Time" style="width:100%;" />
+                        </div>
+
+                        <div style="background: #f8fafc; border: 1px solid var(--border); padding: 10px; border-radius: 6px;">
+                            <label for="endDate" style="font-size:12px; font-weight:600; color:var(--muted); margin-bottom:6px; display:block">End Range</label>
+                            <input id="endDate" type="date" aria-label="End Date" style="width:100%; margin-bottom:6px;" />
+                            <input id="endTime" type="time" step="1" aria-label="End Time" style="width:100%;" />
                         </div>
                     </div>
 
@@ -205,8 +213,7 @@
                         parseInt(dateString[5]), 
                         0 //don't have milliseconds to parse
                     );
-                    console.log(dateString);
-                    console.log(dateObj);
+                    // Note: .toISOString() converts local time (from file name) to UTC
                     isoDate = dateObj.toISOString();
                     
                     if (!user || isNaN(dateObj.getTime())) {
@@ -289,7 +296,6 @@
                         if (stat.isDirectory()) {
                             await scanDirectory(fullPath);
                         } else if (!scannedImgs.has(fullPath)) {
-                            // TODO: Add check for valid image extensions?
                             toScan.push(fullPath);
                         }
                     }
@@ -320,29 +326,60 @@
         };
 
         window.queryDatabase = async (filters) => {
-            const { searchKeywords, searchMode, startDate, endDate, searchUser, page, itemsPerPage } = filters;
+            const { searchKeywords, searchMode, startDate, endDate, startTime, endTime, searchUser, page, itemsPerPage } = filters;
+            
             const queryParams = [];
             let baseQuery = `SELECT DISTINCT T1.id FROM Images AS T1`;
             let joinClause = '';
             const whereClauses = [];
+            
             if (searchKeywords.length > 0) {
                 joinClause = ` INNER JOIN ImageWords AS T2 ON T1.id = T2.imgId`;
                 const placeholders = searchKeywords.map(() => '?').join(',');
                 whereClauses.push(`T2.word IN (${placeholders})`);
                 queryParams.push(...searchKeywords);
             }
+
+            // CRITICAL FIX: Convert DB stored UTC dates to 'localtime' for comparisons.
+            // This ensures that if the user inputs "14:00", they find files originally named "...14_00...".
+            // We also use space ' ' separator instead of 'T' to match sqlite datetime() output.
+
+            // --- Start Filter ---
             if (startDate) {
-                whereClauses.push(`T1.date >= ?`);
-                queryParams.push(startDate);
+                // User provided a specific date (and optional time)
+                let s = startDate;
+                if (startTime) s += ' ' + startTime; // use space separator
+                else s += ' 00:00:00'; // default to start of day
+                
+                // Compare against local time
+                whereClauses.push(`datetime(T1.date, 'localtime') >= ?`);
+                queryParams.push(s);
+            } else if (startTime) {
+                // User provided Time ONLY (scan all days)
+                // Extract HH:MM:SS from the LOCAL time of the image
+                whereClauses.push(`strftime('%H:%M:%S', T1.date, 'localtime') >= ?`);
+                queryParams.push(startTime);
             }
+
+            // --- End Filter ---
             if (endDate) {
-                whereClauses.push(`T1.date <= ?`);
-                queryParams.push(endDate);
+                let e = endDate;
+                if (endTime) e += ' ' + endTime; // use space separator
+                else e += ' 23:59:59'; // default to end of day
+                
+                whereClauses.push(`datetime(T1.date, 'localtime') <= ?`);
+                queryParams.push(e);
+            } else if (endTime) {
+                // User provided Time ONLY
+                whereClauses.push(`strftime('%H:%M:%S', T1.date, 'localtime') <= ?`);
+                queryParams.push(endTime);
             }
+
             if (searchUser) {
                 whereClauses.push(`T1.user LIKE ?`);
                 queryParams.push(`%${searchUser}%`);
             }
+            
             let whereString = whereClauses.length > 0 ? ` WHERE ${whereClauses.join(' AND ')}` : '';
             let groupByString = '';
             if (searchKeywords.length > 0) {
@@ -415,10 +452,8 @@
                 await window.updateRegisteredCount();
             }
 
-            // Perform an initial search (no filters) to populate the table
-            if (window.performSearch) {
-                window.performSearch(true);
-            }
+            // REMOVED: Automatic search call.
+            // We now rely on imageAnalysis-ui.js to trigger the search once (either with filters or empty).
         };
 
     </script>
