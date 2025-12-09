@@ -5,6 +5,7 @@ const endDateInput = document.getElementById('endDate');
 const endTimeInput = document.getElementById('endTime');
 const userInput = document.getElementById('userInput');
 const keywordModeSelect = document.getElementById('keywordMode');
+const tagsInput =  document.getElementById("tagsInput");
 const imageTableBody = document.getElementById('imageTableBody');
 const clearFiltersBtn = document.getElementById('clearFilters');
 const registeredCountEl = document.getElementById('registeredCount');
@@ -216,7 +217,7 @@ function clearResults() {
   PAGINATION_SETTINGS.totalResults = 0;
 
   keywordsInput.value = '';
-  document.getElementById('tagsInput').value = '';
+  tagsInput.value = '';
   startDateInput.value = '';
   endDateInput.value = '';
   if (startTimeInput) startTimeInput.value = '';
@@ -241,7 +242,7 @@ async function performSearch(resetPage = true) {
   const searchKeywords = searchKeywordsStr ? searchKeywordsStr.split(/[\s,]+/).filter(k => k.length > 0) : [];
   const searchMode = keywordModeSelect.value;
   
-  const searchTagsStr = document.getElementById('tagsInput').value.toLowerCase().trim();
+  const searchTagsStr = tagsInput.value.toLowerCase().trim();
   const searchTags = searchTagsStr ? searchTagsStr.split(/[\s,]+/).filter(t => t.length > 0) : [];
   const tagMode = document.getElementById('tagMode').value;
   
@@ -296,6 +297,8 @@ const searchBtn = document.getElementById('searchBtn');
 if (searchBtn) searchBtn.addEventListener('click', () => {
   performSearch(true);
 });
+
+
 
 // Allow Enter to trigger Search (include tags input)
 ['keywordsInput', 'tagsInput', 'startDate', 'endDate', 'userInput'].forEach(id => {

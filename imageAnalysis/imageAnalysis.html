@@ -325,9 +325,13 @@
             });
         };
 
+        //needs to be cleaned up eventually to be more human readable and easier to modify
+        //also some of the ways we currently query seem ineffecient
+        //for example can potentially optimize by checking if we are only searching by tags
+        //and then querying Tags table first instead of alway sstarting with Images table
         window.queryDatabase = async (filters) => {
-            const { searchKeywords, searchMode, startDate, endDate, startTime, endTime, searchUser, page, itemsPerPage } = filters;
-            
+            const { searchKeywords, searchMode, searchTags, tagMode, startDate, endDate, startTime, endTime, searchUser, page, itemsPerPage } = filters;
+
             const queryParams = [];
             let baseQuery = `SELECT DISTINCT T1.id FROM Images AS T1`;
             let joinClause = '';
@@ -340,9 +344,13 @@
                 queryParams.push(...searchKeywords);
             }
 
-            // CRITICAL FIX: Convert DB stored UTC dates to 'localtime' for comparisons.
-            // This ensures that if the user inputs "14:00", they find files originally named "...14_00...".
-            // We also use space ' ' separator instead of 'T' to match sqlite datetime() output.
+            if (searchTags.length > 0) {
+                joinClause += ` INNER JOIN ImageTags as T3 on T1.id = T3.imgid`;
+                joinClause += ` INNER JOIN Tags as T4 on T3.tagId = T4.id`
+                const tagPlaceholders = searchTags.map(() => '?').join(',');
+                whereClauses.push(`T4.tag IN (${tagPlaceholders})`);
+                queryParams.push(...searchTags);
+            }
 
             // --- Start Filter ---
             if (startDate) {
@@ -389,6 +397,20 @@
                     queryParams.push(searchKeywords.length);
                 }
             }
+            if (searchTags.length > 0) {
+                if (groupByString === '') {
+                    groupByString = ` GROUP BY T1.id`;
+                    if (tagMode === 'AND') {
+                        groupByString += ` HAVING COUNT(DISTINCT T4.tag) = ?`
+                        queryParams.push(searchTags.length);
+                    }
+                }
+                else if (tagMode === 'AND') {
+                    groupByString += ` AND COUNT(DISTINCT T4.tag) = ?`
+                    queryParams.push(searchTags.length);
+                }
+            }
+
             const idQuery = baseQuery + joinClause + whereString + groupByString;
             
             const countSql = `SELECT COUNT(*) as count FROM (${idQuery})`;
