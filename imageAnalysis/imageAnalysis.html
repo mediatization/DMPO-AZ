@@ -49,10 +49,31 @@
                     </div>
 
                     <div class="control-group">
-                        <label for="startDate">Date Range</label>
-                        <div style="display:flex;gap:4px">
-                            <input id="startDate" type="date" placeholder="Start Date" />
-                            <input id="endDate" type="date" placeholder="End Date" />
+                        <label for="tagsInput">Tags</label>
+                        <input id="tagsInput" type="search" placeholder="Enter tags (comma or space separated)" />
+                    </div>
+
+                    <div class="control-group">
+                        <label for="tagMode">Tag Search Mode</label>
+                        <select id="tagMode">
+                            <option value="AND">All tags (AND)</option>
+                            <option value="OR">Any tag (OR)</option>
+                        </select>
+                    </div>
+
+                    <div class="control-group">
+                        <label>Date/Time Range</label>
+                        
+                        <div style="background: #f8fafc; border: 1px solid var(--border); padding: 10px; border-radius: 6px; margin-bottom: 8px;">
+                            <label for="startDate" style="font-size:12px; font-weight:600; color:var(--muted); margin-bottom:6px; display:block">Start Range</label>
+                            <input id="startDate" type="date" aria-label="Start Date" style="width:100%; margin-bottom:6px;" />
+                            <input id="startTime" type="time" step="1" aria-label="Start Time" style="width:100%;" />
+                        </div>
+
+                        <div style="background: #f8fafc; border: 1px solid var(--border); padding: 10px; border-radius: 6px;">
+                            <label for="endDate" style="font-size:12px; font-weight:600; color:var(--muted); margin-bottom:6px; display:block">End Range</label>
+                            <input id="endDate" type="date" aria-label="End Date" style="width:100%; margin-bottom:6px;" />
+                            <input id="endTime" type="time" step="1" aria-label="End Time" style="width:100%;" />
                         </div>
                     </div>
 
@@ -70,12 +91,20 @@
                 <main class="right-panel">
                     <div class="table-wrap">
                         <table class="image-table" aria-label="Images table">
+                            <colgroup>
+                                <col style="width:120px">
+                                <col style="width:140px">
+                                <col style="width:140px">
+                                <col style="min-width:160px">
+                                <col style="min-width:160px">
+                            </colgroup>
                             <thead>
                                     <tr>
                                         <th>Preview</th>
                                         <th>Timestamp</th>
                                         <th>User</th>
                                         <th>Keywords</th>
+                                        <th>Tags</th>
                                     </tr>
                             </thead>
                             <tbody id="imageTableBody">
@@ -94,23 +123,22 @@
     </body>
 
     <script type="module">
-        // --- 1. DB & OCR Setup ---
+
+        //setting up our database
         const sqlite3 = require('sqlite3').verbose();
-        // NEW: Added fs and path for automatic scanning
+
         const fs = require('fs').promises;
         const path = require('path');
         
-        const db = new sqlite3.Database('imgDb'); // Connects to ./imgDb
+        const db = new sqlite3.Database('imgDb'); 
 
-        // Our schema (unchanged)
         db.serialize(() => {
             db.run(`CREATE TABLE IF NOT EXISTS Images (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                filename TEXT, 
                 imgPath TEXT NOT NULL UNIQUE, 
                 date TEXT, 
-                user TEXT, 
-                keywords TEXT 
+                user TEXT,
+                notes TEXT DEFAULT ''
             )`);
             db.run(`CREATE TABLE IF NOT EXISTS ImageWords (
                 imgId INTEGER NOT NULL, 
@@ -118,22 +146,30 @@
                 PRIMARY KEY(imgId, word), 
                 FOREIGN KEY (imgId) REFERENCES Images(id) ON DELETE CASCADE
             )`);
+            db.run(`CREATE TABLE IF NOT EXISTS Tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tag TEXT NOT NULL UNIQUE
+            )`);
+            db.run(`CREATE TABLE IF NOT EXISTS ImageTags (
+                imgId INTEGER NOT NULL,
+                tagId INTEGER NOT NULL,
+                PRIMARY KEY(imgId, tagId),
+                FOREIGN KEY (imgId) REFERENCES Images(id) ON DELETE CASCADE,
+                FOREIGN KEY (tagId) REFERENCES Tags(id) ON DELETE CASCADE
+            )`);
         });
 
         const prepositions = new Set(["about", "above", "across", "after", "against", "along", "among", "around", "before", "behind", "below", "beneath", "beside", "between", "beyond", "despite", "down", "during", "except", "for", "from", "inside", "into", "like", "near", "off", "onto", "opposite", "out", "outside", "over", "past", "round", "since", "than", "through", "toward", "under", "underneath", "unlike", "until", "upon", "via", "with", "within", "without"]);
         const statusEl = document.getElementById('processingStatus');
 
-        // --- 2. OCR Processing Logic ---
-        // REMOVED: Manual event listener for #imageSelector
-
-        // MODIFIED: This function now takes an array of file *paths*
-        // It parses user/date info from the path, just like the other branch
+        // This function takes an array of file paths
+        // and parses user/date info from the path
         async function performOCR(filePathsToScan) {
             statusEl.textContent = 'Initializing OCR worker...';
             const worker = await Tesseract.createWorker("eng", 1, {
                 workerPath: "../node_modules/tesseract.js/dist/worker.min.js",
                 corePath: "../node_modules/tesseract.js-core/",
-                langPath: "./", // Assumes eng.traineddata is in the same folder
+                langPath: "./",
                 logger: m => {
                     console.log(m);
                     if (m.status === 'recognizing text') {
@@ -148,8 +184,7 @@
             
             for (let i = 0; i < filePathsToScan.length; i++) {
                 const filePath = filePathsToScan[i];
-                const filename = path.basename(filePath);
-                statusEl.textContent = `File ${i + 1} of ${filePathsToScan.length}: ${filename}`;
+                statusEl.textContent = `File ${i + 1} of ${filePathsToScan.length}: ${filePath}`;
                 
                 let text;
                 try {
@@ -157,17 +192,17 @@
                     const result = await worker.recognize(filePath);
                     text = result.data.text;
                 } catch (e) {
-                    console.error(`Failed to recognize ${filename}:`, e);
+                    console.error(`Failed to recognize ${filePath}:`, e);
                     continue; // Skip this file
                 }
                 
-                // --- Start: Logic adapted from other branch ---
                 let user, isoDate;
                 try {
                     // Parse User: Assumes path is like .../decrypted/[user]/[filename]
                     user = filePath.split(path.sep).at(-2); 
 
                     // Parse Date: Assumes filename is like YYYY_MM_DD_HH_MM_SS...
+                    const filename = path.basename(filePath);
                     let dateString = filename.split('_');
                     const dateObj = new Date(
                         parseInt(dateString[0]),
@@ -175,41 +210,42 @@
                         parseInt(dateString[2]),
                         parseInt(dateString[3]),
                         parseInt(dateString[4]),
-                        parseInt(dateString[5]), 0
+                        parseInt(dateString[5]), 
+                        0 //don't have milliseconds to parse
                     );
-                    isoDate = dateObj.toISOString().split('T')[0]; // Get YYYY-MM-DD
+                    // Note: .toISOString() converts local time (from file name) to UTC
+                    isoDate = dateObj.toISOString();
                     
                     if (!user || isNaN(dateObj.getTime())) {
                         throw new Error('Invalid path format');
                     }
 
                 } catch (e) {
-                    console.warn(`Could not parse user/date for ${filename}. Skipping.`);
+                    console.warn(`Could not parse user/date for ${filePath}. Skipping.`);
                     continue; // Skip file if path format is wrong
                 }
-                // --- End: Adapted logic ---
 
-                // Process words (unchanged from our branch)
+                // Processing words on the image
                 const words = text.split(/\s+/);
                 const keywordsFound = new Set();
                 for (let word of words) {
-                    word = word.toLowerCase().replace(/[^a-z0-9]/gi, ''); // Sanitize
+                    //may want to reconsider what we are sanitizing by at somepoint
+                    word = word.toLowerCase().replace(/[^a-z0-9]/gi, ''); 
                     if (word.length >= 4 && !prepositions.has(word)) {
                         keywordsFound.add(word);
                     }
                 }
                 const uniqueKeywords = [...keywordsFound];
-                const keywordsJson = JSON.stringify(uniqueKeywords);
 
-                // Insert into DB (using our schema)
+                // Insert into DB 
                 const lastID = await new Promise((resolve, reject) => {
-                    db.run(`INSERT INTO Images (filename, imgPath, date, user, keywords) VALUES (?, ?, ?, ?, ?)`, 
-                        [filename, filePath, isoDate, user, keywordsJson], 
+                    db.run(`INSERT INTO Images (imgPath, date, user) VALUES (?, ?, ?)`, 
+                        [filePath, isoDate, user], 
                         function(err) {
                             if (err) {
                                 console.error('DB Insert Error (Images):', err.message);
                                 if (err.message.includes('UNIQUE constraint failed')) {
-                                    statusEl.textContent = `Skipped: ${filename} (already processed).`;
+                                    statusEl.textContent = `Skipped: ${filePath} (already processed).`;
                                 }
                                 resolve(null); // Resolve with null on error
                             } else {
@@ -234,13 +270,12 @@
             statusEl.textContent = `Processing complete (${processedCount} new files).`;
         }
 
-        // NEW: Function from other branch to find images to scan
         async function searchForImagesToScan() {
             statusEl.textContent = 'Scanning for new images...';
             const scannedImgs = new Set();
             let toScan = [];
 
-            // 1. Get all paths already in the DB
+            // Get all paths already in the DB
             await new Promise((resolve, reject) => {
                 db.each("SELECT imgPath FROM Images", (err, row) => {
                     if (err) return reject(err);
@@ -250,7 +285,7 @@
 
             const decryptedPath = path.join(__dirname, '../decrypted');
             
-            // 2. Recursively scan the decrypted directory
+            // Recursively scan the decrypted directory
             async function scanDirectory(dirPath) {
                 try {
                     const items = await fs.readdir(dirPath);
@@ -261,7 +296,6 @@
                         if (stat.isDirectory()) {
                             await scanDirectory(fullPath);
                         } else if (!scannedImgs.has(fullPath)) {
-                            // TODO: Add check for valid image extensions?
                             toScan.push(fullPath);
                         }
                     }
@@ -272,17 +306,16 @@
 
             await scanDirectory(decryptedPath);
 
-            // 3. Process any new images found
+            // Process any new images found
             if (toScan.length > 0) {
                 statusEl.textContent = `Found ${toScan.length} new images to process.`;
-                await performOCR(toScan); // Call our modified OCR function
+                await performOCR(toScan); 
             } else {
                 statusEl.textContent = 'No new images found.';
             }
         }
 
-        // --- 3. Database Query Functions (Exposed to UI script) ---
-        // (Unchanged)
+        // Database Query Functions (Exposed to UI script) ---
         window.getRegisteredCount = async () => {
             return new Promise((res, rej) => {
                 db.get("SELECT COUNT(*) as count FROM Images", (err, row) => {
@@ -292,31 +325,69 @@
             });
         };
 
-        // (Unchanged)
+        //needs to be cleaned up eventually to be more human readable and easier to modify
+        //also some of the ways we currently query seem ineffecient
+        //for example can potentially optimize by checking if we are only searching by tags
+        //and then querying Tags table first instead of alway sstarting with Images table
         window.queryDatabase = async (filters) => {
-            const { searchKeywords, searchMode, startDate, endDate, searchUser, page, itemsPerPage } = filters;
+            const { searchKeywords, searchMode, searchTags, tagMode, startDate, endDate, startTime, endTime, searchUser, page, itemsPerPage } = filters;
+
             const queryParams = [];
             let baseQuery = `SELECT DISTINCT T1.id FROM Images AS T1`;
             let joinClause = '';
             const whereClauses = [];
+            
             if (searchKeywords.length > 0) {
                 joinClause = ` INNER JOIN ImageWords AS T2 ON T1.id = T2.imgId`;
                 const placeholders = searchKeywords.map(() => '?').join(',');
                 whereClauses.push(`T2.word IN (${placeholders})`);
                 queryParams.push(...searchKeywords);
             }
+
+            if (searchTags.length > 0) {
+                joinClause += ` INNER JOIN ImageTags as T3 on T1.id = T3.imgid`;
+                joinClause += ` INNER JOIN Tags as T4 on T3.tagId = T4.id`
+                const tagPlaceholders = searchTags.map(() => '?').join(',');
+                whereClauses.push(`T4.tag IN (${tagPlaceholders})`);
+                queryParams.push(...searchTags);
+            }
+
+            // --- Start Filter ---
             if (startDate) {
-                whereClauses.push(`T1.date >= ?`);
-                queryParams.push(startDate);
+                // User provided a specific date (and optional time)
+                let s = startDate;
+                if (startTime) s += ' ' + startTime; // use space separator
+                else s += ' 00:00:00'; // default to start of day
+                
+                // Compare against local time
+                whereClauses.push(`datetime(T1.date, 'localtime') >= ?`);
+                queryParams.push(s);
+            } else if (startTime) {
+                // User provided Time ONLY (scan all days)
+                // Extract HH:MM:SS from the LOCAL time of the image
+                whereClauses.push(`strftime('%H:%M:%S', T1.date, 'localtime') >= ?`);
+                queryParams.push(startTime);
             }
+
+            // --- End Filter ---
             if (endDate) {
-                whereClauses.push(`T1.date <= ?`);
-                queryParams.push(endDate);
+                let e = endDate;
+                if (endTime) e += ' ' + endTime; // use space separator
+                else e += ' 23:59:59'; // default to end of day
+                
+                whereClauses.push(`datetime(T1.date, 'localtime') <= ?`);
+                queryParams.push(e);
+            } else if (endTime) {
+                // User provided Time ONLY
+                whereClauses.push(`strftime('%H:%M:%S', T1.date, 'localtime') <= ?`);
+                queryParams.push(endTime);
             }
+
             if (searchUser) {
                 whereClauses.push(`T1.user LIKE ?`);
                 queryParams.push(`%${searchUser}%`);
             }
+            
             let whereString = whereClauses.length > 0 ? ` WHERE ${whereClauses.join(' AND ')}` : '';
             let groupByString = '';
             if (searchKeywords.length > 0) {
@@ -326,6 +397,20 @@
                     queryParams.push(searchKeywords.length);
                 }
             }
+            if (searchTags.length > 0) {
+                if (groupByString === '') {
+                    groupByString = ` GROUP BY T1.id`;
+                    if (tagMode === 'AND') {
+                        groupByString += ` HAVING COUNT(DISTINCT T4.tag) = ?`
+                        queryParams.push(searchTags.length);
+                    }
+                }
+                else if (tagMode === 'AND') {
+                    groupByString += ` AND COUNT(DISTINCT T4.tag) = ?`
+                    queryParams.push(searchTags.length);
+                }
+            }
+
             const idQuery = baseQuery + joinClause + whereString + groupByString;
             
             const countSql = `SELECT COUNT(*) as count FROM (${idQuery})`;
@@ -347,46 +432,50 @@
             const ids = idRows.map(r => r.id);
             const idPlaceholders = ids.map(() => '?').join(',');
             const dataQuery = `
-                SELECT id, filename, imgPath, date, user, keywords 
+                SELECT id, imgPath, date, user
                 FROM Images 
                 WHERE id IN (${idPlaceholders})
                 ORDER BY date DESC, id DESC`;
             const images = await new Promise((res, rej) => {
                 db.all(dataQuery, ids, (err, rows) => err ? rej(err) : res(rows));
             });
-            images.forEach(img => {
-                try {
-                    img.keywords = JSON.parse(img.keywords || '[]');
-                } catch (e) {
-                    img.keywords = [];
-                }
+            for (const img of images) {
+                img.keywords = await new Promise((resolve, reject) => {
+                    
+                    db.all(`SELECT word FROM ImageWords WHERE imgId = ?`, [img.id], (err, rows) => {
+                        if (err) {
+                            reject(err);
+                        } else {
+                            // Extract words from all rows
+                            const words = rows.map(row => row.word);
+                            resolve(words);
+                        }
+                    });
+                });
+
                 img.thumbnail = img.imgPath; 
                 img.full = img.imgPath; 
                 img.id = img.id.toString();
-            });
+            }
             return { totalResults, images };
         };
-
-        // --- 4. App Initialization ---
 
         // Expose a way for the UI script to register its functions
         window.performSearch = null;
         window.updateRegisteredCount = null;
 
-        // NEW: This function will be called by imageAnalysis-ui.js when it loads
+        // This function will be called by imageAnalysis-ui.js when it loads
         window.runAppInitialization = async () => {
-            // 1. Run the automatic scan
+            // Run the automatic scan
             await searchForImagesToScan();
             
-            // 2. Update the "Registered" count
+            // Update the "Registered" count
             if (window.updateRegisteredCount) {
                 await window.updateRegisteredCount();
             }
 
-            // 3. Perform an initial search (no filters) to populate the table
-            if (window.performSearch) {
-                window.performSearch(true);
-            }
+            // REMOVED: Automatic search call.
+            // We now rely on imageAnalysis-ui.js to trigger the search once (either with filters or empty).
         };
 
     </script>

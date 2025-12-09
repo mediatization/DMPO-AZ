@@ -1,12 +1,11 @@
-// REMOVED: import { TAGS, IMAGES } from './imageData.js';
-
-// Simple UI renderer for the prototype. Now queries the DB.
-
 const keywordsInput = document.getElementById('keywordsInput');
 const startDateInput = document.getElementById('startDate');
+const startTimeInput = document.getElementById('startTime');
 const endDateInput = document.getElementById('endDate');
+const endTimeInput = document.getElementById('endTime');
 const userInput = document.getElementById('userInput');
 const keywordModeSelect = document.getElementById('keywordMode');
+const tagsInput =  document.getElementById("tagsInput");
 const imageTableBody = document.getElementById('imageTableBody');
 const clearFiltersBtn = document.getElementById('clearFilters');
 const registeredCountEl = document.getElementById('registeredCount');
@@ -107,36 +106,106 @@ function changePage(page) {
   document.querySelector('.table-wrap').scrollTop = 0;
 }
 
-// MODIFIED: applyRender now just renders the paged images it's given
-function applyRender(pageImages) {
+async function applyRender(pageImages) {
   // 1. Render table rows
   imageTableBody.innerHTML = '';
   if (pageImages.length === 0) {
     const row = imageTableBody.insertRow();
     const cell = row.insertCell();
-    cell.colSpan = 4;
+    cell.colSpan = 5;
     cell.textContent = hasSearched ? 'No images match the criteria.' : 'Click Search to view results.';
     cell.style.textAlign = 'center';
     cell.style.padding = '20px';
   } else {
-    pageImages.forEach(image => {
+    for (let image of pageImages) {
       const row = imageTableBody.insertRow();
-      row.appendChild(makeThumbnailCell(image));
-      row.insertCell().textContent = image.date;
-      row.insertCell().textContent = image.user;
-      
+      // Defensive: always create exactly 5 cells in order
+      // 1. Preview
+      const thumbCell = row.insertCell();
+      const img = document.createElement('img');
+      img.className = 'thumb';
+      img.alt = `${image.filename} thumbnail`;
+      img.src = 'file://' + image.thumbnail;
+      img.addEventListener('click', () => {
+        const url = new URL('./imageDetail.html', window.location.href);
+        url.searchParams.set('id', image.id);
+        window.location.href = url.toString();
+      });
+      thumbCell.appendChild(img);
+
+      // 2. Timestamp
+      const dateCell = row.insertCell();
+      if (image.date) {
+        // Format ISO string to readable date/time
+        const d = new Date(image.date);
+        if (!isNaN(d)) {
+          dateCell.textContent = d.toLocaleString(undefined, {
+            year: 'numeric',
+            month: 'short',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+          });
+        } else {
+          dateCell.textContent = image.date;
+        }
+      } else {
+        dateCell.textContent = '';
+      }
+
+      // 3. User
+      const userCell = row.insertCell();
+      userCell.textContent = image.user || '';
+
+      // 4. Keywords
       const keywordsCell = row.insertCell();
-      keywordsCell.className = 'tags-cell';
-      // image.keywords is already an array from the query function
-      (image.keywords || []).forEach(keyword => { 
+      keywordsCell.className = 'keywords-cell';
+      const keywordsFlex = document.createElement('div');
+      keywordsFlex.className = 'keywords-flex';
+      (Array.isArray(image.keywords) ? image.keywords : []).forEach(keyword => {
         const span = document.createElement('span');
         span.className = 'tag-chip';
         span.textContent = keyword;
-        keywordsCell.appendChild(span);
+        keywordsFlex.appendChild(span);
       });
-    });
+      keywordsCell.appendChild(keywordsFlex);
+
+      // 5. Tags
+      const tagsCell = row.insertCell();
+      tagsCell.className = 'tags-cell';
+      const tagsFlex = document.createElement('div');
+      tagsFlex.className = 'tags-flex';
+
+      const rows = await new Promise((res, rej) => {
+        const sqlite3 = require('sqlite3').verbose();
+        const db = new sqlite3.Database('imgDb');
+        db.all(`SELECT t.tag
+                FROM ImageTags it, tags t 
+                WHERE it.tagId = t.id AND it.imgId = ?`, 
+                [image.id], 
+                (err, rows) => err ? rej(err) : res(rows)
+              );
+      });  
+
+      for (const r of rows) {
+        const span = document.createElement('span');
+        span.className = 'tag-chip manual-tag';
+        span.textContent = r.tag;
+        tagsFlex.appendChild(span);
+      };
+      tagsCell.appendChild(tagsFlex);
+
+      // Defensive: ensure row has exactly 5 cells
+      while (row.cells.length < 5) {
+        row.insertCell();
+      }
+      while (row.cells.length > 5) {
+        row.deleteCell(-1);
+      }
+    };
   }
-  
+
   // 2. Update UI counts and render pagination
   resultsCountEl.textContent = PAGINATION_SETTINGS.totalResults;
   renderPagination();
@@ -148,12 +217,15 @@ function clearResults() {
   PAGINATION_SETTINGS.totalResults = 0;
 
   keywordsInput.value = '';
+  tagsInput.value = '';
   startDateInput.value = '';
   endDateInput.value = '';
+  if (startTimeInput) startTimeInput.value = '';
+  if (endTimeInput) endTimeInput.value = '';
   userInput.value = '';
 
   resultsCountEl.textContent = 0;
-  imageTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:#6b7280;">Click Search to view results.</td></tr>';
+  imageTableBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:#6b7280;">Click Search to view results.</td></tr>';
   paginationControlsEl.style.display = 'none';
   hasSearched = false;
 }
@@ -169,16 +241,29 @@ async function performSearch(resetPage = true) {
   const searchKeywordsStr = keywordsInput.value.toLowerCase().trim();
   const searchKeywords = searchKeywordsStr ? searchKeywordsStr.split(/[\s,]+/).filter(k => k.length > 0) : [];
   const searchMode = keywordModeSelect.value;
+  
+  const searchTagsStr = tagsInput.value.toLowerCase().trim();
+  const searchTags = searchTagsStr ? searchTagsStr.split(/[\s,]+/).filter(t => t.length > 0) : [];
+  const tagMode = document.getElementById('tagMode').value;
+  
+  // MODIFIED: Separation of Date and Time
   const startDate = startDateInput.value;
   const endDate = endDateInput.value;
+  const startTime = startTimeInput ? startTimeInput.value : '';
+  const endTime = endTimeInput ? endTimeInput.value : '';
+  
   const searchUser = userInput.value.toLowerCase().trim();
 
   // 2. Build filter object
   const filters = {
     searchKeywords,
     searchMode,
-    startDate: startDate || null,
-    endDate: endDate || null,
+    searchTags,
+    tagMode,
+    startDate, 
+    endDate,
+    startTime, 
+    endTime,
     searchUser: searchUser || null,
     page: PAGINATION_SETTINGS.currentPage,
     itemsPerPage: PAGINATION_SETTINGS.ITEMS_PER_PAGE
@@ -193,7 +278,7 @@ async function performSearch(resetPage = true) {
     PAGINATION_SETTINGS.totalPages = Math.ceil(totalResults / PAGINATION_SETTINGS.ITEMS_PER_PAGE);
     
     // 5. Render results (images is already the paged list)
-    applyRender(images); 
+    await applyRender(images); 
   
   } catch (err) {
     console.error('Error performing search:', err);
@@ -203,6 +288,8 @@ async function performSearch(resetPage = true) {
 
 clearFiltersBtn.addEventListener('click', () => {
   clearResults();
+  // NEW: Clear URL history so refresh doesn't re-trigger a parameterized search
+  window.history.replaceState({}, document.title, window.location.pathname);
 });
 
 // Search is explicit via button
@@ -211,8 +298,21 @@ if (searchBtn) searchBtn.addEventListener('click', () => {
   performSearch(true);
 });
 
-// Allow Enter to trigger Search
-['keywordsInput', 'startDate', 'endDate', 'userInput'].forEach(id => {
+
+
+// Allow Enter to trigger Search (include tags input)
+['keywordsInput', 'tagsInput', 'startDate', 'endDate', 'userInput'].forEach(id => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      performSearch(true);
+    }
+  });
+});
+// Also allow Enter on new time fields
+['startTime', 'endTime'].forEach(id => {
   const el = document.getElementById(id);
   if (!el) return;
   el.addEventListener('keydown', (e) => {
@@ -235,17 +335,31 @@ async function updateRegisteredCount() {
 }
 
 async function initializeApp() {
-    // Call the main init function from imageAnalysis.html
+    clearResults();
+
+    // 1. Check for URL Parameters (Context Search) FIRST
+    const params = new URLSearchParams(window.location.search);
+    const isAutoSearch = params.has('autoSearch');
+
+    if (isAutoSearch) {
+        if (params.has('user')) userInput.value = params.get('user');
+        if (params.has('startDate')) startDateInput.value = params.get('startDate');
+        if (params.has('startTime')) startTimeInput.value = params.get('startTime');
+        if (params.has('endDate')) endDateInput.value = params.get('endDate');
+        if (params.has('endTime')) endTimeInput.value = params.get('endTime');
+    }
+
+    // 2. Run Scan and Count update (from HTML)
     if (window.runAppInitialization) {
-        clearResults(); // Show "Click Search" message temporarily
-        // This will now scan, update count, and run the first search
         await window.runAppInitialization(); 
     } else {
-        // Fallback if the main script didn't load right
-        console.error("Main initialization function not found.");
         await updateRegisteredCount();
-        clearResults(); 
     }
+
+    // 3. Perform Search (Once)
+    // If isAutoSearch is true, inputs are filled and this searches Context.
+    // If isAutoSearch is false, inputs are empty and this searches All.
+    performSearch(true);
 }
 
 initializeApp(); // Call the new async init function
