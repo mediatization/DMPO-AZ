@@ -225,6 +225,10 @@ ipcMain.handle("download-images", async (event, args) => {
     // register a progress callback that forwards progress to renderer
     downloader.setProgressCallback((key, downloaded, total) => {
         try {
+            /*
+                DEBUG NOTES:
+                THIS IS THE BASE ON WHICH YOU SHOULD BUILD THE DECRYPTION PROGRESS BAR!
+            */
             win.webContents.send('download-progress', { key, downloaded, total, username: args.name || args.username })
         } catch (e) {
             console.error('send download-progress failed', e)
@@ -333,8 +337,18 @@ const decrypt = async (event, args) => {
     const javaPath = settings.javaPath || "java.exe"
     const decryptorPath = resolve("./Decryptor.class")
 
+    // DEBUG CONSOLE LOG, REMOVE LATER
+    console.log("<----------------------ATTENTION--------------------------->")
     console.log("Args: ")
     console.log(args)
+    /*
+        DEBUG NOTES:
+        This is where the process of actually decrypting the filenames and contents(?) actually takes place.
+        It's less important to what I'm implementing that I understand too much of the specifics of the
+        encryption itself, but what's worth noting is that in my testing the "ATTENTION" print only happens once.
+        Need to figure out how to send the number of files to be encrypted to the page.js script, so tha the progress
+        bar's math functions can actually work.
+    */
 
     console.log("Hashed Key: " + args.hashedKey.slice(0,8))
     console.log("Encrypted Key: " + args.encryptedKey)

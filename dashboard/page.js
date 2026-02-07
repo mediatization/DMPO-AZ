@@ -237,13 +237,20 @@ function render() {
     // username
     tr.appendChild(createNode("td", user.name, "username-label"))
 
-        // progress cell: show progress bar if present for this user's key
-        const keyPrefix = user.hashedKey ? user.hashedKey.slice(0,8) : (user.username || '')
+    // progress cell: show progress bar if present for this user's key
+    const keyPrefix = user.hashedKey ? user.hashedKey.slice(0,8) : (user.username || '')
     const progCell = document.createElement('td')
     progCell.className = 'progress-cell'
         const progData = downloadProgress[keyPrefix]
         if (progData && progData.total > 0) {
             const percent = Math.round((progData.downloaded / progData.total) * 100)
+
+            /*
+                DEBUG NOTES:
+                barOuter and bar inner are the elements used to create the progress bar proper
+                barOuter acts as the outline of the bar, whilst bar inner is the colored bar
+                that fills up barOuter
+            */
             const barOuter = document.createElement('div')
             barOuter.className = 'progress-outer'
             const barInner = document.createElement('div')
@@ -252,6 +259,7 @@ function render() {
             barOuter.appendChild(barInner)
             const text = document.createElement('div')
             text.className = 'progress-text'
+            // string interpolation used here. could another approach be used?
             text.textContent = `${progData.downloaded}/${progData.total} (${percent}%)`
             progCell.appendChild(barOuter)
             progCell.appendChild(text)
@@ -276,6 +284,14 @@ function render() {
 
     tr.appendChild(createNode("td", user.numberInBucket == 0 ? "" : user.numberInBucket, "number"))
         
+    /*
+        DEBUG NOTES:
+        The app does not automatically refresh the UI after finishing the downloading process,
+        thus the downloaded count does not appear unless the user manually refreshes the UI themselves.
+        Will also refresh upon the completion of image decryption. Look into that.
+
+        Couldn't find anything about refreshing the elements before this. Check main or above.
+    */
     const downloadedCount = createNode("td", user.downloadedCount == 0 ? "" : user.downloadedCount, "number clickable downloaded-col")
         downloadedCount.onclick = () => {
             ipcRenderer.invoke("open-in-explorer", "./encrypted/" + user.hashedKey.slice(0, 8))
