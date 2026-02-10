@@ -704,7 +704,7 @@ const build = (key, args) =>
         win.webContents.send("build-notif-failure")
         return
     }
-    fs.writeFile(constantsPath, constants(settings.uploadAddress, key, args.hashedKey), (err) => {
+    fs.writeFile(constantsPath, constants(settings.uploadAddress, key, args.hashedKey, args.name), (err) => {
         if (err) {
             console.error('Error occurred writing new values to Constants.java:', err);
             win.webContents.send("build-notif-failure")
@@ -785,7 +785,7 @@ const build = (key, args) =>
     });
 }
 
-const constants = (upload_address, key, hashed_key) =>
+const constants = (upload_address, key, hashed_key, name) =>
 {
     return ("package com.example.screenlife2;\n" + "public class Constants {\n" + 
     "\tpublic final static String UPLOAD_ADDRESS = \"" + upload_address +"\";\n" +
@@ -795,6 +795,7 @@ const constants = (upload_address, key, hashed_key) =>
     "\tpublic static final String USER_KEY = \"" + key + "\";\n" +
     "\t// This is the hashed key, (not the plain 'hash' in the DMPO, but the 'hashed key')\n" +
     "\tpublic static final String USER_HASH = \"" + hashed_key  + "\";\n" +
+    "\tpublic static final String USER_ID = \"" + name + "\";\n" +
     "}")
 }
 
