@@ -43,7 +43,6 @@ let data = [];
 let win;
 let win1;
 let win2;
-// (Reverted) decrypted files will be written directly into ./decrypted/<prefix>/
 
 function createWindow() {
     win = new BrowserWindow({
@@ -221,7 +220,7 @@ ipcMain.handle("download-images", async (event, args) => {
     downloader.addFilesToQueue(blobs)
     downloader.printQueue()
     // set the current key and total so progress can be tracked
-    downloader.setCurrentKey(args.hashedKey.slice(0,8), blobs.length)
+    downloader.setCurrentInfo(args.hashedKey.slice(0,8), args.name, blobs.length)
     // register a progress callback that forwards progress to renderer
     downloader.setProgressCallback((key, downloaded, total) => {
         try {
@@ -346,9 +345,9 @@ const decrypt = async (event, args) => {
         return
     }
 
-    const folderName = resolve(`./encrypted/${args.hashedKey.slice(0, 8)}/`)
+    const folderName = resolve(`./encrypted/${args.name}/`)
     // Reverted behavior: write decrypted files directly into ./decrypted/<prefix>/
-    const prefix = args.hashedKey.slice(0, 8)
+    const prefix = args.name
     const destFolderName = resolve(`./decrypted/${prefix}/`)
 
     if (!fs.existsSync(folderName)) {
@@ -560,8 +559,6 @@ ipcMain.handle("open-onboard-window", async (event, args) => {
     win1.menuBarVisible = false;
 })
  
-//might be dead code? only place this gets called is in the only function inside
-//onboarding.js which appears to not be called anywhere
 ipcMain.handle("register", async (event, args) => {
     const { name } = args;
 
@@ -714,15 +711,15 @@ const build = (key, args) =>
         } else {
             console.log('Wrote new values to Constants.java');
             // Build the app apks
-            console.log("Starting build for hashed key: " + args.hashedKey.slice(0,8))
+            console.log("Starting build for hashed key: " + args.name)
             // Build
             const projectDir = appPath
             const buildType = 'debug'
-            const destinationDir = './apk_output/' + args.hashedKey.slice(0,8)
+            const destinationDir = './apk_output/' + args.name
             // Run gradle with explicit assemble task for both platforms
             const gradleCmd = process.platform === 'win32' ? '.\\gradlew.bat assembleDebug' : './gradlew assembleDebug';
             const apkPath = path.join(projectDir, 'app', 'build', 'outputs', 'apk', buildType, `app-${buildType}.apk`);
-            const destPath = path.join(destinationDir, `app-${buildType}-${args.hashedKey.slice(0,8)}.apk`);
+            const destPath = path.join(destinationDir, `app-${buildType}-${args.name}.apk`);
 
             // Try to make gradlew executable on *nix (non-fatal)
             const gradlewLocal = path.join(projectDir, 'gradlew')

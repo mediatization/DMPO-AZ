@@ -5,24 +5,20 @@ class Downloader {
     constructor() {
         this.queue = [];
         this.maxNumDownloads = 1000;
-        this.downloading = false
+        this.downloading = false;
+        this.currentName = "";
         this.currentKey = "";
         this.currentTotal = 0;
         this.currentDownloaded = 0;
         this.progressCallback = null;
     }
 
-    setCurrentKey(newKey)
-    {
-        this.currentKey = newKey;
-        this.currentDownloaded = 0;
-        this.currentTotal = 0;
-    }
 
-    setCurrentKey(newKey, total) {
+    setCurrentInfo(newKey, newName, total) {
         this.currentKey = newKey;
+        this.currentName = newName
         this.currentDownloaded = 0;
-        this.currentTotal = total || 0;
+        this.currentTotal = total;
     }
 
     setProgressCallback(cb) {
@@ -50,7 +46,7 @@ class Downloader {
         this.downloading = true
         while (this.queue.length > 0) {
             const file = this.queue.shift()
-            await ensureDownload(file, this.currentKey);
+            await ensureDownload(file, this.currentName);
             this.currentDownloaded = (this.currentDownloaded || 0) + 1
             if (this.progressCallback) {
                 try { this.progressCallback(this.currentKey, this.currentDownloaded, this.currentTotal) } catch(e) { console.error('progress callback', e) }
@@ -60,26 +56,14 @@ class Downloader {
     }
 }
 
-const exists = async (destPath) => {
-    return new Promise((resolve, reject) => {
-        fs.stat(destPath, (err, stats) => {
-            if (!err && stats.size > 0) {
-                resolve(true);
-            } else {
-                resolve(false);
-            }
-        });
-    });
-};
-
 // New with azure download
-const ensureDownload = async (file, key) => {
+const ensureDownload = async (file, name) => {
     return new Promise((resolve, reject) => {
         fs.mkdir(
-            `./encrypted/${key}`,
+            `./encrypted/${name}`,
             { recursive: true },
             async () => {
-                const path = `./encrypted/${key}/${file.name}`;
+                const path = `./encrypted/${name}/${file.name}`;
                 fs.stat(path, (err, stats) => {
                     if (!err && stats.size > 0) {
                         resolve(true);
