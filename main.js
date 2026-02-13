@@ -329,6 +329,8 @@ ipcMain.handle("decrypt-for-user", async (event, args) => {
 
 const decrypt = async (event, args) => {
     // Proceed with decryption regardless of network status (original behavior)
+    decryptionProgress = 0
+
     const res = await waitForPassphrase()
     if (!res)
         return
@@ -375,7 +377,20 @@ const decrypt = async (event, args) => {
 
     let process = spawn(javaPath, [`Decryptor`, `${key}`, `${folderName}`, destFolderName], )
     event.sender.send("update-status", "Started decrypting..")
-    process.stdout.on("data", data => console.log("data", data.toString()))
+    process.stdout.on("data", data => {
+        /* 
+            DEBUG NOTES:
+            This area is where the process outputs the decrypted data each time data actually is decrypted.
+            Lines 341-343 are where the files are actually decrypted. Find where process iterates, or just
+            do stupid solution and just have the process send out a progress report here where it increments
+            and send the number of the current file being decrypted. Decrypt would be initially called at line
+            326 under normal circumstances.
+        */
+        decryptionProgress += 1
+        console.log("decryptionProgress: ", decryptionProgress.toString())
+        console.log("data", data.toString())
+        win.webContents.send('decryption-progress', {decryptionProgress})
+    })
     // process.stdout.on("data", data => {})
     process.stderr.on("data", data => {
         dialog.showErrorBox("Script Error", data.toString())

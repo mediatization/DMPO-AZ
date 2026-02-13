@@ -7,8 +7,14 @@ let canCensor = false;
 
 let enforceSecurityCleanup = false; // Default to true
 
+let isDownloading = true; // Boolean that toggles between rendering download/decryption progress bar
+
 // track per-key download progress: { '<key>': { downloaded, total } }
 let downloadProgress = {}
+
+// I'm basing this off of download progress
+// track per-key decryption progress: { '<key>': {decrypted, total } }
+let decryptionProgress = []
 
 // small helper used in a few places
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -61,9 +67,18 @@ function main() {
     ipcRenderer.on('download-progress', (e, args) => {
         // args: { key, downloaded, total, username }
         if (!args || !args.key) return
+        isDownloading = true
         downloadProgress[args.key] = { downloaded: args.downloaded, total: args.total, username: args.username }
         render()
     })
+
+    // temp decryption progress event reader
+    ipcRenderer.on('decryption-progress', (e, args) => {
+        isDownloading = false
+
+        render()
+    })
+
     ipcRenderer.on("update-status", (e, args) => { 
         const usersCount = document.getElementById("users-count")
         usersCount.innerText = args
@@ -241,6 +256,8 @@ function render() {
     const keyPrefix = user.hashedKey ? user.hashedKey.slice(0,8) : (user.username || '')
     const progCell = document.createElement('td')
     progCell.className = 'progress-cell'
+
+    if (isDownloading = true){
         const progData = downloadProgress[keyPrefix]
         if (progData && progData.total > 0) {
             const percent = Math.round((progData.downloaded / progData.total) * 100)
@@ -266,6 +283,10 @@ function render() {
         } else {
             progCell.textContent = ''
         }
+    }
+    else {
+        progCell.textContent = 'GRUG'
+    }
         tr.appendChild(progCell)
 
         console.log('timSince', user)
