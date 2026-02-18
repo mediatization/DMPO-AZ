@@ -17,15 +17,3 @@ This tool was created to aid in the facilitation of ScreenLife Capture studies. 
 4. Use the command `npm start` or `electron .` to start the program.
 
 Note: Please ensure that the bucket_key.json and settings.json files have been included and updated in your DMPO folder.
-
-##### The information on how to use the automated censoring scripts can be found here:
-https://github.com/ScreenLife-Capture-Team/censoring-scripts
-The `censoring-scripts` folder needs to be in the same folder as this repository, as demonstrated below:
-
-```
-parent-folder
- - DMPO
- - censoring-scripts
-```
-
-If this folder is not detected, automated censoring options will not be present in the DMPO software.

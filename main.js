@@ -15,7 +15,6 @@ const { exec } = require('child_process');
 const path = require('path');
 
 let decryptionQueue = []
-let censoringQueue = []
 
 const downloader = new Downloader()
 
@@ -33,17 +32,11 @@ const AZURE_ACC_KEY = settings.accountKey
 // Create the BlobServiceClient object with connection string
 const blobServiceClient = new Storage.BlobServiceClient(AZURE_ACC_URL, new Storage.StorageSharedKeyCredential( AZURE_ACC_NAME, AZURE_ACC_KEY));
 
-const pythonPath = resolve("../censoring-scripts/venv/Scripts/python.exe")
-const scriptPath = resolve("../censoring-scripts/main.py")
-
-const CANCENSOR = fs.existsSync(pythonPath) && fs.existsSync(scriptPath)
-
 
 let data = [];
 let win;
 let win1;
 let win2;
-// (Reverted) decrypted files will be written directly into ./decrypted/<prefix>/
 
 function createWindow() {
     win = new BrowserWindow({
@@ -169,8 +162,7 @@ const fetchData = async (event = null) => {
         imageData.push(toReturn);
     }
 
-    if (event) event.sender.send("update-status", "Processing data..") 
-    if (event) event.sender.send("update-cancensor", CANCENSOR) 
+    if (event) event.sender.send("update-status", "Processing data..")  
 
     console.log("Logging image data from Azure...")
     // For each object v, with inde i
@@ -221,7 +213,7 @@ ipcMain.handle("download-images", async (event, args) => {
     downloader.addFilesToQueue(blobs)
     downloader.printQueue()
     // set the current key and total so progress can be tracked
-    downloader.setCurrentKey(args.hashedKey.slice(0,8), blobs.length)
+    downloader.setCurrentInfo(args.hashedKey.slice(0,8), args.name, blobs.length)
     // register a progress callback that forwards progress to renderer
     downloader.setProgressCallback((key, downloaded, total) => {
         try {
@@ -248,12 +240,12 @@ const watch = async (data, folderPath, name) => {
     const userNumFiles = userFolders.reduce((a, f, i) => ({ ...a, [f]: userFiles[i].length }), {})
     const dataWithNumFiles = data.map((d) => {
         if (d.hashedKey) {
-            val = (userFolders.includes(d.hashedKey.slice(0, 8))) ? userNumFiles[d.hashedKey.slice(0, 8)] : 0
+            val = (userFolders.includes(d.name)) ? userNumFiles[d.name] : 0
             d[name] = val
         }
         return d
     })
-    const usersNotInData = userFolders.filter(u => !(data.map(d => d.hashedKey.slice(0, 8)).includes(u)))
+    const usersNotInData = userFolders.filter(u => !(data.map(d => d.name).includes(u)))
     return [
         ...dataWithNumFiles,
         ...usersNotInData.map(u => ({ username: u, [name]: userNumFiles[u]}))
@@ -265,8 +257,6 @@ const updateLocalFiles = async (data) => {
         return null
     data = await watch(data, "encrypted", "downloadedCount")
     data = await watch(data, "decrypted", "decryptedCount")
-    data = await watch(data, "cleaned_automated", "cleanedAutomatedCount")
-    data = await watch(data, "final", "finalCount")
     return data
 }
 
@@ -346,9 +336,9 @@ const decrypt = async (event, args) => {
         return
     }
 
-    const folderName = resolve(`./encrypted/${args.hashedKey.slice(0, 8)}/`)
+    const folderName = resolve(`./encrypted/${args.name}/`)
     // Reverted behavior: write decrypted files directly into ./decrypted/<prefix>/
-    const prefix = args.hashedKey.slice(0, 8)
+    const prefix = args.name
     const destFolderName = resolve(`./decrypted/${prefix}/`)
 
     if (!fs.existsSync(folderName)) {
@@ -380,9 +370,6 @@ const decrypt = async (event, args) => {
             
         }
         */
-        if (code == 0 && args.acensor) {
-            event.sender.send("start-automated-censoring", args)
-        }
         triggerUpdateLocalFiles()
     })
 }
@@ -430,50 +417,6 @@ const addToDb = async (folderPath) => {
     }
 };
 
-ipcMain.handle("censor-for-user", async (event, args) => {
-    // Queue the censoring request (no online gating)
-    censoringQueue.push(args)
-    if (censoringQueue.length === 1) {
-        censor(args)
-    }
-
-});
-
-const censor = (args) => {
-    console.log("Censoring (A) for user", args)
-
-    const pythonPath = resolve("../censoring-scripts/venv/Scripts/python.exe")
-    const scriptPath = resolve("../censoring-scripts/main.py")
-
-    if (!fs.existsSync(pythonPath) || !fs.existsSync(scriptPath)) {
-        dialog.showMessageBoxSync({
-            message: "Automated Censoring module not detected! Please ensure the censoring-scripts folder is in the same folder as the manager's folder.",
-            type: "error"
-        })
-        return
-    }
-
-    const folderName = resolve(`./decrypted/${args.hashedKey.slice(0, 8)}/`)
-    const destFolderName = resolve(`./cleaned_automated/${args.hashedKey.slice(0, 8)}/`)
-
-    if (!fs.existsSync(destFolderName)) 
-        fs.mkdirSync(destFolderName, { recursive: true  })
-
-    // event.sender.send("update-status", "Started automated censoring..")
-    console.log("ACENSORING TO", scriptPath, folderName, destFolderName)
-    let process = spawn(pythonPath, [scriptPath, folderName, destFolderName])
-    process.stdout.on("data", data => console.log("data", data.toString()))
-    process.stderr.on("data", data => dialog.showErrorBox("Script Error", data.toString()))
-    process.on("exit", code => {
-        console.log('code', code)
-        censoringQueue.shift()
-        if (censoringQueue.length > 0) {
-            censor(censoringQueue[0])
-        }
-        triggerUpdateLocalFiles()
-    })
-
-}
 
 ipcMain.handle("open-in-explorer", async (event, args) => {
     console.log("Opening in explorer", args)
@@ -560,8 +503,6 @@ ipcMain.handle("open-onboard-window", async (event, args) => {
     win1.menuBarVisible = false;
 })
  
-//might be dead code? only place this gets called is in the only function inside
-//onboarding.js which appears to not be called anywhere
 ipcMain.handle("register", async (event, args) => {
     const { name } = args;
 
@@ -608,17 +549,13 @@ const decipher = ({ encryptedKey, iv}) => {
     return key
 }
 
-ipcMain.handle("remove-user", async (event, args) => {
-    const { hashedKey } = args;
-    const encryptedPath = "encrypted/" + hashedKey.slice(0, 8) + "/"
+ipcMain.handle("remove-user", async (event, user) => {
+
+    const encryptedPath = "encrypted/" + user.name + "/"
     if (fs.existsSync(encryptedPath)) fs.rmdirSync(encryptedPath, { recursive: true });
-    const decryptedPath = "decrypted/" + hashedKey.slice(0, 8) + "/"
+    const decryptedPath = "decrypted/" + user.name + "/"
     if (fs.existsSync(decryptedPath)) fs.rmdirSync(decryptedPath, { recursive: true });
-    const censoredPath = "cleaned_automated/" + hashedKey.slice(0, 8) + "/"
-    if (fs.existsSync(censoredPath)) fs.rmdirSync(censoredPath, { recursive: true });
-    const finalPath = "final/" + hashedKey.slice(0, 8) + "/"
-    if (fs.existsSync(finalPath)) fs.rmdirSync(finalPath, { recursive: true });
-    fs.unlinkSync("keys/" + hashedKey);
+    fs.unlinkSync("keys/" + user.hashedKey);
 
     // refresh dashboard data after removal
     try {
@@ -707,22 +644,22 @@ const build = (key, args) =>
         win.webContents.send("build-notif-failure")
         return
     }
-    fs.writeFile(constantsPath, constants(settings.uploadAddress, key, args.hashedKey), (err) => {
+    fs.writeFile(constantsPath, constants(settings.uploadAddress, key, args.hashedKey, args.name), (err) => {
         if (err) {
             console.error('Error occurred writing new values to Constants.java:', err);
             win.webContents.send("build-notif-failure")
         } else {
             console.log('Wrote new values to Constants.java');
             // Build the app apks
-            console.log("Starting build for hashed key: " + args.hashedKey.slice(0,8))
+            console.log("Starting build for hashed key: " + args.name)
             // Build
             const projectDir = appPath
             const buildType = 'debug'
-            const destinationDir = './apk_output/' + args.hashedKey.slice(0,8)
+            const destinationDir = './apk_output/' + args.name
             // Run gradle with explicit assemble task for both platforms
             const gradleCmd = process.platform === 'win32' ? '.\\gradlew.bat assembleDebug' : './gradlew assembleDebug';
             const apkPath = path.join(projectDir, 'app', 'build', 'outputs', 'apk', buildType, `app-${buildType}.apk`);
-            const destPath = path.join(destinationDir, `app-${buildType}-${args.hashedKey.slice(0,8)}.apk`);
+            const destPath = path.join(destinationDir, `app-${buildType}-${args.name}.apk`);
 
             // Try to make gradlew executable on *nix (non-fatal)
             const gradlewLocal = path.join(projectDir, 'gradlew')
@@ -788,7 +725,7 @@ const build = (key, args) =>
     });
 }
 
-const constants = (upload_address, key, hashed_key) =>
+const constants = (upload_address, key, hashed_key, name) =>
 {
     return ("package com.example.screenlife2;\n" + "public class Constants {\n" + 
     "\tpublic final static String UPLOAD_ADDRESS = \"" + upload_address +"\";\n" +
@@ -798,6 +735,7 @@ const constants = (upload_address, key, hashed_key) =>
     "\tpublic static final String USER_KEY = \"" + key + "\";\n" +
     "\t// This is the hashed key, (not the plain 'hash' in the DMPO, but the 'hashed key')\n" +
     "\tpublic static final String USER_HASH = \"" + hashed_key  + "\";\n" +
+    "\tpublic static final String USER_ID = \"" + name + "\";\n" +
     "}")
 }
 
