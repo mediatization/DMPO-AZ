@@ -3,7 +3,6 @@ const electron = require('electron');
 const { ipcRenderer } = require('electron/renderer');
 
 let data = [];
-let canCensor = false;
 
 let enforceSecurityCleanup = false; // Default to true
 
@@ -43,10 +42,6 @@ function main() {
         ipcRenderer.invoke("open-image-analysis" )
     }    
     document.getElementById("onboard-button").style.display = "block";
-    ipcRenderer.on("update-cancensor", (e, args) => { 
-        canCensor = args
-        render()
-    })
 
     ipcRenderer.on("update-security-settings", (e, args) => { 
         enforceSecurityCleanup = args.enforceSecurityCleanup;
@@ -123,20 +118,11 @@ function main() {
         document.getElementById("build-notif").innerText = ""
         document.getElementById("build-notif").style.display = "none"
     })
-    setInterval(() => {
-        // electron.ipcRenderer.invoke("fetch-data", { full: false })
-        // .then(d => {
-        //    if (JSON.stringify(d) !== JSON.stringify(data)) {
-        //        data = d
-        //        render()
-        //    }
-        // }) 
+    setInterval(() => { 
         electron.ipcRenderer.invoke("is-online")
         .then(online => {
-            // *** MODIFICATION START ***
             if (enforceSecurityCleanup && online && data.some(d => (d.decryptedCount && d.decryptedCount != 0) || (d.cleanedAutomatedCount && d.cleanedAutomatedCount != 0))) {
-            // *** MODIFICATION END ***
-                document.getElementById("online-warning").innerText = "WARNING: Decrypted / Automatically Censored Images detected while Online"
+                document.getElementById("online-warning").innerText = "WARNING: Decrypted images detected while online"
                 document.getElementById("online-warning").style.display = "inline-block"
                 document.getElementById("decrypt-all-button").style.display = "none"
             } else {
@@ -211,21 +197,8 @@ function render() {
     actionsHeader.appendChild(downloadAllBtn)
     actionsHeader.appendChild(buildAllBtn)
 
-
-    // button = createNode("p", `Decrypt${ canCensor ? ' and Censor All' : ''}`, "button default-hidden")
-    // button.id = "decrypt-all-button"
-    // button.onclick = () => {
-    //     data.forEach(async (user) => {
-    //         ipcRenderer.invoke("decrypt-for-user", {...user, acensor: canCensor} )
-    //     })
-    // }
-    // buttonBox.appendChild(button)
-
     // append actions header directly (spacer removed to give space to progress)
     header.appendChild(actionsHeader)
-    // remaining action header columns (Decrypt, Censor (optional), Remove, Clear)
-    // single actions header now covers per-row action buttons
-    // (per-row actions will be merged into a single td)
 
     headerContainer.appendChild(header)
     table.appendChild(headerContainer)
@@ -288,11 +261,7 @@ function render() {
         }
         tr.appendChild(decryptedCount)
 
-    // removed censored and final columns (not present in original layout)
 
-    // spacer removed; actions column appended directly
-
-        // combined per-row actions column (Download, Build, Decrypt, optional Censor, Remove, Clear)
         const actionsTd = createNode("td", null, "actions-col")
 
         // Download
@@ -326,15 +295,6 @@ function render() {
             ipcRenderer.invoke("decrypt-for-user", user)
         }
         actionsTd.appendChild(decBtn)
-
-        // Censor (optional)
-        if (canCensor) {
-            let cBtn = createNode("p", "Censor", "button default-hidden")
-            cBtn.onclick = () => {
-                ipcRenderer.invoke("censor-for-user", user)
-            }
-            actionsTd.appendChild(cBtn)
-        }
 
         // Remove
         let removeBtn = createNode("p", "Remove", "button default-hidden")

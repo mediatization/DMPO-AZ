@@ -15,7 +15,6 @@ const { exec } = require('child_process');
 const path = require('path');
 
 let decryptionQueue = []
-let censoringQueue = []
 
 const downloader = new Downloader()
 
@@ -32,11 +31,6 @@ const AZURE_ACC_KEY = settings.accountKey
 
 // Create the BlobServiceClient object with connection string
 const blobServiceClient = new Storage.BlobServiceClient(AZURE_ACC_URL, new Storage.StorageSharedKeyCredential( AZURE_ACC_NAME, AZURE_ACC_KEY));
-
-const pythonPath = resolve("../censoring-scripts/venv/Scripts/python.exe")
-const scriptPath = resolve("../censoring-scripts/main.py")
-
-const CANCENSOR = fs.existsSync(pythonPath) && fs.existsSync(scriptPath)
 
 
 let data = [];
@@ -168,8 +162,7 @@ const fetchData = async (event = null) => {
         imageData.push(toReturn);
     }
 
-    if (event) event.sender.send("update-status", "Processing data..") 
-    if (event) event.sender.send("update-cancensor", CANCENSOR) 
+    if (event) event.sender.send("update-status", "Processing data..")  
 
     console.log("Logging image data from Azure...")
     // For each object v, with inde i
@@ -247,12 +240,12 @@ const watch = async (data, folderPath, name) => {
     const userNumFiles = userFolders.reduce((a, f, i) => ({ ...a, [f]: userFiles[i].length }), {})
     const dataWithNumFiles = data.map((d) => {
         if (d.hashedKey) {
-            val = (userFolders.includes(d.hashedKey.slice(0, 8))) ? userNumFiles[d.hashedKey.slice(0, 8)] : 0
+            val = (userFolders.includes(d.name)) ? userNumFiles[d.name] : 0
             d[name] = val
         }
         return d
     })
-    const usersNotInData = userFolders.filter(u => !(data.map(d => d.hashedKey.slice(0, 8)).includes(u)))
+    const usersNotInData = userFolders.filter(u => !(data.map(d => d.name).includes(u)))
     return [
         ...dataWithNumFiles,
         ...usersNotInData.map(u => ({ username: u, [name]: userNumFiles[u]}))
@@ -264,8 +257,6 @@ const updateLocalFiles = async (data) => {
         return null
     data = await watch(data, "encrypted", "downloadedCount")
     data = await watch(data, "decrypted", "decryptedCount")
-    data = await watch(data, "cleaned_automated", "cleanedAutomatedCount")
-    data = await watch(data, "final", "finalCount")
     return data
 }
 
@@ -379,9 +370,6 @@ const decrypt = async (event, args) => {
             
         }
         */
-        if (code == 0 && args.acensor) {
-            event.sender.send("start-automated-censoring", args)
-        }
         triggerUpdateLocalFiles()
     })
 }
@@ -429,50 +417,6 @@ const addToDb = async (folderPath) => {
     }
 };
 
-ipcMain.handle("censor-for-user", async (event, args) => {
-    // Queue the censoring request (no online gating)
-    censoringQueue.push(args)
-    if (censoringQueue.length === 1) {
-        censor(args)
-    }
-
-});
-
-const censor = (args) => {
-    console.log("Censoring (A) for user", args)
-
-    const pythonPath = resolve("../censoring-scripts/venv/Scripts/python.exe")
-    const scriptPath = resolve("../censoring-scripts/main.py")
-
-    if (!fs.existsSync(pythonPath) || !fs.existsSync(scriptPath)) {
-        dialog.showMessageBoxSync({
-            message: "Automated Censoring module not detected! Please ensure the censoring-scripts folder is in the same folder as the manager's folder.",
-            type: "error"
-        })
-        return
-    }
-
-    const folderName = resolve(`./decrypted/${args.hashedKey.slice(0, 8)}/`)
-    const destFolderName = resolve(`./cleaned_automated/${args.hashedKey.slice(0, 8)}/`)
-
-    if (!fs.existsSync(destFolderName)) 
-        fs.mkdirSync(destFolderName, { recursive: true  })
-
-    // event.sender.send("update-status", "Started automated censoring..")
-    console.log("ACENSORING TO", scriptPath, folderName, destFolderName)
-    let process = spawn(pythonPath, [scriptPath, folderName, destFolderName])
-    process.stdout.on("data", data => console.log("data", data.toString()))
-    process.stderr.on("data", data => dialog.showErrorBox("Script Error", data.toString()))
-    process.on("exit", code => {
-        console.log('code', code)
-        censoringQueue.shift()
-        if (censoringQueue.length > 0) {
-            censor(censoringQueue[0])
-        }
-        triggerUpdateLocalFiles()
-    })
-
-}
 
 ipcMain.handle("open-in-explorer", async (event, args) => {
     console.log("Opening in explorer", args)
@@ -605,17 +549,13 @@ const decipher = ({ encryptedKey, iv}) => {
     return key
 }
 
-ipcMain.handle("remove-user", async (event, args) => {
-    const { hashedKey } = args;
-    const encryptedPath = "encrypted/" + hashedKey.slice(0, 8) + "/"
+ipcMain.handle("remove-user", async (event, user) => {
+
+    const encryptedPath = "encrypted/" + user.name + "/"
     if (fs.existsSync(encryptedPath)) fs.rmdirSync(encryptedPath, { recursive: true });
-    const decryptedPath = "decrypted/" + hashedKey.slice(0, 8) + "/"
+    const decryptedPath = "decrypted/" + user.name + "/"
     if (fs.existsSync(decryptedPath)) fs.rmdirSync(decryptedPath, { recursive: true });
-    const censoredPath = "cleaned_automated/" + hashedKey.slice(0, 8) + "/"
-    if (fs.existsSync(censoredPath)) fs.rmdirSync(censoredPath, { recursive: true });
-    const finalPath = "final/" + hashedKey.slice(0, 8) + "/"
-    if (fs.existsSync(finalPath)) fs.rmdirSync(finalPath, { recursive: true });
-    fs.unlinkSync("keys/" + hashedKey);
+    fs.unlinkSync("keys/" + user.hashedKey);
 
     // refresh dashboard data after removal
     try {
