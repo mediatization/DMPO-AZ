@@ -18,7 +18,24 @@ async function findImageById(id) {
     });
 }
 
-function renderMetadata(image) {
+async function getImageWords(imageId) {
+    return new Promise((res, rej) => {
+        db.all(`SELECT word
+                FROM ImageWords 
+                WHERE imgId = ?`,
+            [imageId],
+            (err, rows) => {
+                if (err) {
+                    rej(err);
+                } else {
+                    res(rows.map(row => row.word));
+                }
+            }
+        );
+    });
+}
+
+function renderMetadata(image, keywords) {
     const dl = document.getElementById('metaList');
     dl.innerHTML = '';
 
@@ -30,11 +47,6 @@ function renderMetadata(image) {
         dl.appendChild(dt);
         dl.appendChild(dd);
     }
-
-    let keywordsList = [];
-    try {
-        keywordsList = JSON.parse(image.keywords || '[]');
-    } catch (e) {}
 
     add('ID', image.id);
     add('Filename', image.filename || image.imgPath.split(/[\\/]/).pop());
@@ -56,20 +68,7 @@ function renderMetadata(image) {
     }
     add('Date', formattedDate);
     add('User', image.user || '—');
-    add('Keywords', keywordsList.join(', '));
-}
-
-function getLocalTimeStrings(dateObj) {
-    const year = dateObj.getFullYear();
-    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-    const day = String(dateObj.getDate()).padStart(2, '0');
-    const hours = String(dateObj.getHours()).padStart(2, '0');
-    const minutes = String(dateObj.getMinutes()).padStart(2, '0');
-    const seconds = String(dateObj.getSeconds()).padStart(2, '0');
-    return {
-        date: `${year}-${month}-${day}`,
-        time: `${hours}:${minutes}:${seconds}`
-    };
+    add('Keywords', keywords.join(', '));
 }
 
 // Image zoom handling
@@ -100,7 +99,9 @@ async function loadDetail() {
 
     try {
         const image = await findImageById(id);
-        if (!image) {
+        const keywords = await getImageWords(id);
+        console.log(keywords);
+        if (!image || !keywords) {
             document.getElementById('title').textContent = 'Image not found';
         } else {
             const fname = image.filename || image.imgPath.split(/[\\/]/).pop();
@@ -108,8 +109,7 @@ async function loadDetail() {
             const fullImage = document.getElementById('fullImage');
             fullImage.src = 'file://' + image.imgPath;
             fullImage.alt = fname;
-
-            renderMetadata(image);
+            renderMetadata(image, keywords);
             await renderTagsAndNotes(image);
             setScale(0.4);
             try { await loadAllTags(); } catch (e) {}
@@ -122,16 +122,20 @@ async function loadDetail() {
 
 // Tags functions
 async function getImageTags(imageId) {
-    const rows = await new Promise((res, rej) => {
+    return new Promise((res, rej) => {
         db.all(`SELECT t.tag
                 FROM ImageTags it, tags t 
                 WHERE it.tagId = t.id AND it.imgId = ?`,
             [imageId],
-            (err, rows) => err ? rej(err) : res(rows)
+            (err, rows) => {
+                if (err) {
+                    rej(err);
+                } else {
+                    res(rows.map(r => r.tag));
+                }
+            }
         );
     });
-
-    return rows.map(r => r.tag);
 }
 
 async function renderTagsAndNotes(image) {
