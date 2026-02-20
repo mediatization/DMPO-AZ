@@ -112,11 +112,7 @@ async function applyRender(pageImages) {
       img.alt = `${image.filename} thumbnail`;
       img.src = 'file://' + image.thumbnail;
       img.addEventListener('click', () => {
-        //const url = new URL('./imageDetail.html', window.location.href);
-        //url.searchParams.set('id', image.id);
-        //window.location.href = url.toString();
-        ipcRenderer.invoke("open-image-detail" );
-        console.log("happen");
+        ipcRenderer.invoke("open-image-detail", image.id);
       });
       thumbCell.appendChild(img);
 

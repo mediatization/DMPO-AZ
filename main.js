@@ -480,7 +480,11 @@ ipcMain.handle("open-image-detail", async (event, args) => {
             contextIsolation: false
         },
     });
-    win1.loadFile("imageAnalysis/imageDetail.html");
+    win1.loadFile("imageDetail/imageDetail.html", {
+        query: {
+            id: args
+        }
+    });
     win1.menuBarVisible = false;
 })
 
