@@ -162,8 +162,9 @@
         const prepositions = new Set(["about", "above", "across", "after", "against", "along", "among", "around", "before", "behind", "below", "beneath", "beside", "between", "beyond", "despite", "down", "during", "except", "for", "from", "inside", "into", "like", "near", "off", "onto", "opposite", "out", "outside", "over", "past", "round", "since", "than", "through", "toward", "under", "underneath", "unlike", "until", "upon", "via", "with", "within", "without"]);
         const statusEl = document.getElementById('processingStatus');
 
-        // This function takes an array of file paths
-        // and parses user/date info from the path
+        // This function takes an array of file paths parses user/date info from the path
+        // then OCRs the images and adds them to the database, tesseract seems to only
+        // work when ran inside of an html file, otherwise this would all be in the js file
         async function performOCR(filePathsToScan) {
             statusEl.textContent = 'Initializing OCR worker...';
             const worker = await Tesseract.createWorker("eng", 1, {
@@ -473,9 +474,6 @@
             if (window.updateRegisteredCount) {
                 await window.updateRegisteredCount();
             }
-
-            // REMOVED: Automatic search call.
-            // We now rely on imageAnalysis-ui.js to trigger the search once (either with filters or empty).
         };
 
     </script>

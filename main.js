@@ -304,7 +304,6 @@ ipcMain.handle("decrypt-for-user", async (event, args) => {
             // offline -> proceed
         }
     }
-    // *** MODIFICATION END ***
 
     // Queue the decryption request and process sequentially
     decryptionQueue.push([event, args])
@@ -468,8 +467,26 @@ process.on('uncaughtException', (err) => {
     }
     process.exit(1) 
 })
-// *** MODIFICATION END ***
 
+ipcMain.handle("open-image-detail", async (event, args) => {
+    const res = await waitForPassphrase()
+    if (!res)
+        return
+    win1 = new BrowserWindow({
+        width: 800,
+        height: 800,
+        webPreferences: {
+            nodeIntegration: true,
+            contextIsolation: false
+        },
+    });
+    win1.loadFile("imageDetail/imageDetail.html", {
+        query: {
+            id: args
+        }
+    });
+    win1.menuBarVisible = false;
+})
 
 ipcMain.handle("open-image-analysis", async (event, args) => {
     const res = await waitForPassphrase()

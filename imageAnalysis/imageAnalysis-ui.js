@@ -1,3 +1,5 @@
+const { ipcRenderer } = require('electron/renderer');
+
 const keywordsInput = document.getElementById('keywordsInput');
 const startDateInput = document.getElementById('startDate');
 const startTimeInput = document.getElementById('startTime');
@@ -25,23 +27,6 @@ let hasSearched = false; // whether user has performed an explicit search
 // Expose functions to the global script block in HTML
 window.performSearch = performSearch;
 window.updateRegisteredCount = updateRegisteredCount;
-
-function makeThumbnailCell(image) {
-  const td = document.createElement('td');
-  const img = document.createElement('img');
-  img.className = 'thumb';
-  img.alt = `${image.filename} thumbnail`;
-  // MODIFIED: Use 'file://' protocol for local file paths
-  img.src = 'file://' + image.thumbnail; 
-  img.addEventListener('click', () => {
-    // Open dedicated image detail page
-    const url = new URL('./imageDetail.html', window.location.href);
-    url.searchParams.set('id', image.id);
-    window.location.href = url.toString();
-  });
-  td.appendChild(img);
-  return td;
-}
 
 // Function to render robust pagination controls (No changes needed)
 function renderPagination() {
@@ -127,9 +112,7 @@ async function applyRender(pageImages) {
       img.alt = `${image.filename} thumbnail`;
       img.src = 'file://' + image.thumbnail;
       img.addEventListener('click', () => {
-        const url = new URL('./imageDetail.html', window.location.href);
-        url.searchParams.set('id', image.id);
-        window.location.href = url.toString();
+        ipcRenderer.invoke("open-image-detail", image.id);
       });
       thumbCell.appendChild(img);
 
@@ -230,7 +213,6 @@ function clearResults() {
   hasSearched = false;
 }
 
-// MODIFIED: performSearch is now async and calls the DB query
 async function performSearch(resetPage = true) {
   if (resetPage) {
     PAGINATION_SETTINGS.currentPage = 1; 
@@ -246,7 +228,7 @@ async function performSearch(resetPage = true) {
   const searchTags = searchTagsStr ? searchTagsStr.split(/[\s,]+/).filter(t => t.length > 0) : [];
   const tagMode = document.getElementById('tagMode').value;
   
-  // MODIFIED: Separation of Date and Time
+  // Separation of Date and Time
   const startDate = startDateInput.value;
   const endDate = endDateInput.value;
   const startTime = startTimeInput ? startTimeInput.value : '';
@@ -288,7 +270,7 @@ async function performSearch(resetPage = true) {
 
 clearFiltersBtn.addEventListener('click', () => {
   clearResults();
-  // NEW: Clear URL history so refresh doesn't re-trigger a parameterized search
+  // Clear URL history so refresh doesn't re-trigger a parameterized search
   window.history.replaceState({}, document.title, window.location.pathname);
 });
 
@@ -323,7 +305,7 @@ if (searchBtn) searchBtn.addEventListener('click', () => {
   });
 });
 
-// NEW: Function to update the total registered count
+// Function to update the total registered count
 async function updateRegisteredCount() {
     try {
         const count = await window.getRegisteredCount();

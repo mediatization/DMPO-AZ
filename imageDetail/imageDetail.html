@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Image Detail</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="page-header">
+        <h1 id="title">Image Detail</h1>
+      </header>
+
+      <main class="main-content">
+        <div id="detailWrap" class="detail-layout">
+          <div class="image-section">
+            <div id="imageFrame" class="image-frame">
+              <img id="fullImage" src="" alt="Full image" />
+            </div>
+            
+            <div class="zoom-controls">
+              <button id="zoomOutBtn" class="zoom-btn" title="Zoom out">−</button>
+              <button id="zoomResetBtn" class="zoom-btn" title="Reset zoom">Reset</button>
+              <button id="zoomInBtn" class="zoom-btn" title="Zoom in">+</button>
+              <span id="zoomLevel" class="zoom-level">100%</span>
+            </div>
+
+            <div id="notesPanel" class="notes-panel">
+              <h4>Notes</h4>
+              <textarea id="notesBox" class="notes-textarea" rows="16"></textarea>
+              <div id="notesStatus" class="notes-status">Auto-saved</div>
+            </div>
+          </div>
+
+          <div class="sidebar">
+            <aside class="metadata-panel">
+              <h3>Metadata</h3>
+              <dl id="metaList" class="metadata-list"></dl>
+            </aside>
+
+            <aside class="tags-panel">
+              <div>
+                <h4>Tags</h4>
+                <div id="tagsContainer" class="tag-list" aria-live="polite"></div>
+                <div class="tag-input-group">
+                  <input id="tagInput" list="tagsList" type="text" placeholder="Add tag (single word)" />
+                  <datalist id="tagsList"></datalist>
+                  <button id="addTagBtn" class="add-tag-btn">Add</button>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script src="./imageDetail.js"></script>
+  </body>
+</html>
