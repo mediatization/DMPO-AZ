@@ -75,9 +75,13 @@ function main() {
     // temp decryption progress event reader
     ipcRenderer.on('decryption-progress', (e, args) => {
         isDownloading = false
-
+        console.log(args.curUserKey)
+        console.log(isDownloading)
         render()
     })
+
+    electron.ipcRenderer.invoke("ready-for-decryption")
+    console.log("<----------------- YOOOOOO I invoked ----------------->")
 
     ipcRenderer.on("update-status", (e, args) => { 
         const usersCount = document.getElementById("users-count")
@@ -359,7 +363,6 @@ function render() {
         // Decrypt
         let decBtn = createNode("p", "Decrypt", "button default-hidden")
         decBtn.onclick = () => {
-            console.log("decrypting user")
             ipcRenderer.invoke("decrypt-for-user", user)
         }
         actionsTd.appendChild(decBtn)
@@ -405,6 +408,12 @@ function render() {
     wrapper.className = 'tableFixHead'
     wrapper.appendChild(table)
     mainBody.appendChild(wrapper)
+}
+
+function test1(userKey){
+    console.log("<---------------Test1 function has entered! ----------------------->")
+    console.log(userKey)
+    console.log(isDownloading)
 }
 
 main()

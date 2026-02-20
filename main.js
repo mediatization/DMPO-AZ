@@ -45,6 +45,8 @@ let win1;
 let win2;
 // (Reverted) decrypted files will be written directly into ./decrypted/<prefix>/
 
+let readyForDecrypt = false;
+
 function createWindow() {
     win = new BrowserWindow({
         width: 1600,
@@ -306,6 +308,12 @@ const isOnline = async () => {
     }
 }
 
+ipcMain.handle("ready-for-decrypt", async (event, args) => {
+    readyForDecrypt = true
+    console.log("<------------------- Debug, ready for decrypt handler rendered")
+    return true
+})
+
 ipcMain.handle("decrypt-for-user", async (event, args) => {
     // Don't allow decrypt while online
     if (settings.enforceSecurityCleanup) {
@@ -319,6 +327,10 @@ ipcMain.handle("decrypt-for-user", async (event, args) => {
         }
     }
     // *** MODIFICATION END ***
+
+    while (readyForDecrypt === false){
+        pass
+    }
 
     // Queue the decryption request and process sequentially
     decryptionQueue.push([event, args])
@@ -341,7 +353,7 @@ const decrypt = async (event, args) => {
 
     // DEBUG CONSOLE LOG, REMOVE LATER
     console.log("<----------------------ATTENTION--------------------------->")
-    console.log("Args: ")
+    console.log("Args for decrypt: ")
     console.log(args)
     /*
         DEBUG NOTES:
@@ -356,6 +368,8 @@ const decrypt = async (event, args) => {
     console.log("Encrypted Key: " + args.encryptedKey)
     console.log("IV: " + args.iv)
     console.log("Key: " + key)
+
+    let curUserKey = args.hashedKey.slice(0,8)
 
     if (!fs.existsSync(decryptorPath)) {
         dialog.showErrorBox("Missing decryptor class", "Decryptor.class missing.")
@@ -389,7 +403,10 @@ const decrypt = async (event, args) => {
         decryptionProgress += 1
         console.log("decryptionProgress: ", decryptionProgress.toString())
         console.log("data", data.toString())
-        win.webContents.send('decryption-progress', {decryptionProgress})
+        // try sending the hashkey. it's what the download progress event uses to log total to a user.
+        // console.log(win.isDestroyed()) // should be false
+        // console.log(win.webContents.getURL())
+        // win.webContents.send('decryption-progress', {curUserKey, decryptionProgress})
     })
     // process.stdout.on("data", data => {})
     process.stderr.on("data", data => {
