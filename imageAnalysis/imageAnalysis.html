@@ -8,9 +8,9 @@
             content="script-src 'self' 'unsafe-inline';"
         />
         <script src="../node_modules/tesseract.js/dist/tesseract.min.js"></script>
+        <link rel="stylesheet" href="./style.css">
     </head>
-    <link rel="stylesheet" href="./style.css">
-    <body id="body">
+    <body>
 
         <div class="container">
             <header class="page-header">
@@ -23,18 +23,20 @@
                     
                     <div class="control-group">
                         <label>Image Processing</label>
-                        <div id="processingStatus" style="font-size: 13px; color: var(--muted); margin-top: 4px; min-height: 2.4em; line-height: 1.2;">
+                        <div id="processingStatus" class="processing-status">
                             Initializing...
                         </div>
                     </div>
                     
-                    <hr style="border: none; border-top: 1px solid var(--border); margin: 16px 0;">
+                    <hr class="divider">
+                    
                     <div class="control-group">
-                        <div id="counts" style="margin-bottom:8px">
+                        <div id="counts" class="counts-display">
                             <div><strong>Registered:</strong> <span id="registeredCount">0</span></div>
                             <div><strong>Results:</strong> <span id="resultsCount">0</span></div>
                         </div>
                     </div>
+                    
                     <div class="control-group">
                         <label for="keywordsInput">Keywords (OCR)</label>
                         <input id="keywordsInput" type="search" placeholder="Enter keywords (comma or space separated)" />
@@ -64,16 +66,16 @@
                     <div class="control-group">
                         <label>Date/Time Range</label>
                         
-                        <div style="background: #f8fafc; border: 1px solid var(--border); padding: 10px; border-radius: 6px; margin-bottom: 8px;">
-                            <label for="startDate" style="font-size:12px; font-weight:600; color:var(--muted); margin-bottom:6px; display:block">Start Range</label>
-                            <input id="startDate" type="date" aria-label="Start Date" style="width:100%; margin-bottom:6px;" />
-                            <input id="startTime" type="time" step="1" aria-label="Start Time" style="width:100%;" />
+                        <div class="date-range-block">
+                            <label for="startDate" class="range-label">Start Range</label>
+                            <input id="startDate" type="date" aria-label="Start Date" />
+                            <input id="startTime" type="time" step="1" aria-label="Start Time" />
                         </div>
 
-                        <div style="background: #f8fafc; border: 1px solid var(--border); padding: 10px; border-radius: 6px;">
-                            <label for="endDate" style="font-size:12px; font-weight:600; color:var(--muted); margin-bottom:6px; display:block">End Range</label>
-                            <input id="endDate" type="date" aria-label="End Date" style="width:100%; margin-bottom:6px;" />
-                            <input id="endTime" type="time" step="1" aria-label="End Time" style="width:100%;" />
+                        <div class="date-range-block">
+                            <label for="endDate" class="range-label">End Range</label>
+                            <input id="endDate" type="date" aria-label="End Date" />
+                            <input id="endTime" type="time" step="1" aria-label="End Time" />
                         </div>
                     </div>
 
@@ -82,7 +84,7 @@
                         <input id="userInput" type="text" placeholder="username" />
                     </div>
 
-                    <div class="control-group small" style="display:flex;gap:8px">
+                    <div class="control-group button-group">
                         <button id="searchBtn">Search</button>
                         <button id="clearFilters">Clear filters</button>
                     </div>
@@ -99,26 +101,25 @@
                                 <col style="min-width:160px">
                             </colgroup>
                             <thead>
-                                    <tr>
-                                        <th>Preview</th>
-                                        <th>Timestamp</th>
-                                        <th>User</th>
-                                        <th>Keywords</th>
-                                        <th>Tags</th>
-                                    </tr>
+                                <tr>
+                                    <th>Preview</th>
+                                    <th>Timestamp</th>
+                                    <th>User</th>
+                                    <th>Keywords</th>
+                                    <th>Tags</th>
+                                </tr>
                             </thead>
                             <tbody id="imageTableBody">
-                                </tbody>
+                            </tbody>
                         </table>
                     </div>
                     
                     <div id="paginationControls" class="pagination-controls" aria-label="Pagination Navigation">
-                        </div>
+                    </div>
                     
                 </main>
             </section>
-
-            </div>
+        </div>
 
     </body>
 
