@@ -156,64 +156,59 @@ function render() {
     const mainBody = document.getElementById("main")
     mainBody.textContent = ""
 
-    const table = document.createElement("table")
-    table.className = "data-table"
+    // create a flex-based container
+    const container = document.createElement('div')
+    container.className = 'data-container data-table'
 
-    const headerContainer = document.createElement("thead")
-    const header = document.createElement("tr")
-    header.appendChild(createNode("th", "Username", "username-label"))
-    header.appendChild(createNode("th", "Progress", "progress-label"))
-    header.appendChild(createNode("th", "Last Capture", "time-label"))
-    header.appendChild(createNode("th", "In Bucket", "number"))
-    header.appendChild(createNode("th", "Downloaded", "number downloaded-col"))
-    header.appendChild(createNode("th", "Decrypted", "number"))
+    // header row
+    const headerRow = createNode('div', null, 'row header-row')
+    headerRow.appendChild(createNode('div', 'Username', 'username-label cell header-cell'))
+    headerRow.appendChild(createNode('div', 'Progress', 'progress-label cell header-cell'))
+    headerRow.appendChild(createNode('div', 'Last Capture', 'time-label cell header-cell'))
+    headerRow.appendChild(createNode('div', 'In Bucket', 'number cell header-cell'))
+    headerRow.appendChild(createNode('div', 'Downloaded', 'number downloaded-col cell header-cell'))
+    headerRow.appendChild(createNode('div', 'Decrypted', 'number cell header-cell'))
 
-    // Combined header for batch actions (Download All + Build All)
-    const actionsHeader = createNode("th", "")
-    actionsHeader.className = 'actions-col'
-    const downloadAllBtn = createNode("p", "Download All", "button default-hidden")
+    const actionsHeader = createNode('div', null, 'actions-col cell header-cell')
+    const downloadAllBtn = createNode('p', 'Download All', 'button default-hidden')
     downloadAllBtn.onclick = async () => {
-        console.log("downloading all")
+        console.log('downloading all')
         try {
-            const promises = data.map(user => ipcRenderer.invoke("download-images", user))
+            const promises = data.map(user => ipcRenderer.invoke('download-images', user))
             await Promise.all(promises)
             setDownloadNotif('Download All: Success', 4000)
         } catch (err) {
             console.error('download all failed', err)
             setDownloadNotif('Download All: Failed', 6000)
         } finally {
-            ipcRenderer.invoke("fetch-data", { full: true })
+            ipcRenderer.invoke('fetch-data', { full: true })
         }
     }
-    const buildAllBtn = createNode("p", "Build All", "button default-hidden")
+    const buildAllBtn = createNode('p', 'Build All', 'button default-hidden')
     buildAllBtn.onclick = async() => {
-        console.log("building all")
-        let askForPassphrase = true 
+        console.log('building all')
+        let askForPassphrase = true
         data.forEach(user => {
-            ipcRenderer.invoke("build-for-user", user, askForPassphrase)
+            ipcRenderer.invoke('build-for-user', user, askForPassphrase)
             askForPassphrase = false
         })
     }
     actionsHeader.appendChild(downloadAllBtn)
     actionsHeader.appendChild(buildAllBtn)
+    headerRow.appendChild(actionsHeader)
 
-    // append actions header directly (spacer removed to give space to progress)
-    header.appendChild(actionsHeader)
+    container.appendChild(headerRow)
 
-    headerContainer.appendChild(header)
-    table.appendChild(headerContainer)
-    
-    const tableBody = document.createElement("tbody")
+    // rows
     for (let user of data) {
-        const tr = document.createElement("tr")
+        const row = createNode('div', null, 'row')
 
-    // username
-    tr.appendChild(createNode("td", user.name, "username-label"))
+        // username
+        row.appendChild(createNode('div', user.name, 'username-label cell'))
 
-        // progress cell: show progress bar if present for this user's key
+        // progress
         const keyPrefix = user.hashedKey ? user.hashedKey.slice(0,8) : (user.username || '')
-    const progCell = document.createElement('td')
-    progCell.className = 'progress-cell'
+        const progCell = createNode('div', null, 'progress-cell cell')
         const progData = downloadProgress[keyPrefix]
         if (progData && progData.total > 0) {
             const percent = Math.round((progData.downloaded / progData.total) * 100)
@@ -228,105 +223,91 @@ function render() {
             text.textContent = `${progData.downloaded}/${progData.total} (${percent}%)`
             progCell.appendChild(barOuter)
             progCell.appendChild(text)
-        } else {
-            progCell.textContent = ''
         }
-        tr.appendChild(progCell)
+        row.appendChild(progCell)
 
-        console.log('timSince', user)
-        const timeLabel = createNode("td", user.lastImageAddedOn == "N.A." ? "" : user.timeSince, "time-label")
-        timeLabel.onmouseenter = () => {
-            if (user.lastImageAddedOn && user.lastImageAddedOn !== "N.A.") {
-                timeLabel.textContent = user.lastImageAddedOn
+        const timeDiv = createNode('div', user.lastImageAddedOn == 'N.A.' ? '' : user.timeSince, 'time-label cell')
+        timeDiv.onmouseenter = () => {
+            if (user.lastImageAddedOn && user.lastImageAddedOn !== 'N.A.') {
+                timeDiv.textContent = user.lastImageAddedOn
             }
         }
-        timeLabel.onmouseleave = () => {
-            // only reset to timeSince if there was a timeSince value
-            if (user.timeSince) timeLabel.textContent = user.timeSince
+        timeDiv.onmouseleave = () => {
+            if (user.timeSince) timeDiv.textContent = user.timeSince
         }
-        timeLabel.style = "width: 140px;"
-        tr.appendChild(timeLabel)
+        row.appendChild(timeDiv)
 
-    tr.appendChild(createNode("td", user.numberInBucket == 0 ? "" : user.numberInBucket, "number"))
-        
-    const downloadedCount = createNode("td", user.downloadedCount == 0 ? "" : user.downloadedCount, "number clickable downloaded-col")
+        row.appendChild(createNode('div', user.numberInBucket == 0 ? '' : user.numberInBucket, 'number cell'))
+
+        const downloadedCount = createNode('div', user.downloadedCount == 0 ? '' : user.downloadedCount, 'number clickable downloaded-col cell')
         downloadedCount.onclick = () => {
-            ipcRenderer.invoke("open-in-explorer", "./encrypted/" + user.hashedKey.slice(0, 8))
+            ipcRenderer.invoke('open-in-explorer', './encrypted/' + user.hashedKey.slice(0, 8))
         }
-        tr.appendChild(downloadedCount)
+        row.appendChild(downloadedCount)
 
-    const decryptedCount = createNode("td", user.decryptedCount == 0 ? "" : user.decryptedCount, "number clickable")
+        const decryptedCount = createNode('div', user.decryptedCount == 0 ? '' : user.decryptedCount, 'number clickable cell')
         decryptedCount.onclick = () => {
-            ipcRenderer.invoke("open-decrypted", { prefix: user.hashedKey.slice(0, 8) })
+            ipcRenderer.invoke('open-decrypted', { prefix: user.hashedKey.slice(0, 8) })
         }
-        tr.appendChild(decryptedCount)
+        row.appendChild(decryptedCount)
 
+        const actionsDiv = createNode('div', null, 'actions-col cell')
 
-        const actionsTd = createNode("td", null, "actions-col")
-
-        // Download
-        let dlBtn = createNode("p", "Download", "button default-hidden")
+        let dlBtn = createNode('p', 'Download', 'button default-hidden')
         dlBtn.onclick = async () => {
-            console.log("downloading")
+            console.log('downloading')
             try {
-                await ipcRenderer.invoke("download-images", user)
+                await ipcRenderer.invoke('download-images', user)
                 setDownloadNotif(`${user.name}: Download Success`, 4000)
             } catch (err) {
                 console.error('download failed for user', user, err)
                 setDownloadNotif(`${user.name}: Download Failed`, 6000)
             } finally {
-                ipcRenderer.invoke("fetch-data", { full: true })
+                ipcRenderer.invoke('fetch-data', { full: true })
             }
         }
-        actionsTd.appendChild(dlBtn)
+        actionsDiv.appendChild(dlBtn)
 
-        // Build
-        let buildBtn = createNode("p", "Build", "button default-hidden")
+        let buildBtn = createNode('p', 'Build', 'button default-hidden')
         buildBtn.onclick = () => {
-            console.log("building for user")
-            ipcRenderer.invoke("build-for-user", user, true)
+            console.log('building for user')
+            ipcRenderer.invoke('build-for-user', user, true)
         }
-        actionsTd.appendChild(buildBtn)
+        actionsDiv.appendChild(buildBtn)
 
-        // Decrypt
-        let decBtn = createNode("p", "Decrypt", "button default-hidden")
+        let decBtn = createNode('p', 'Decrypt', 'button default-hidden')
         decBtn.onclick = () => {
-            console.log("decrypting user")
-            ipcRenderer.invoke("decrypt-for-user", user)
+            console.log('decrypting user')
+            ipcRenderer.invoke('decrypt-for-user', user)
         }
-        actionsTd.appendChild(decBtn)
+        actionsDiv.appendChild(decBtn)
 
-        // Remove
-        let removeBtn = createNode("p", "Remove", "button default-hidden")
+        let removeBtn = createNode('p', 'Remove', 'button default-hidden')
         removeBtn.onclick = async () => {
             try {
-                await ipcRenderer.invoke("remove-user", user)
+                await ipcRenderer.invoke('remove-user', user)
             } catch (e) { console.error('remove-user failed', e) }
-            ipcRenderer.invoke("fetch-data", { full: true })
+            ipcRenderer.invoke('fetch-data', { full: true })
         }
-        actionsTd.appendChild(removeBtn)
+        actionsDiv.appendChild(removeBtn)
 
-        // Clear Bucket
-        let clearBtn = createNode("p", "Clear Bucket", "button default-hidden")
+        let clearBtn = createNode('p', 'Clear Bucket', 'button default-hidden')
         clearBtn.onclick = async () => {
-            console.log("clearing bucket")
+            console.log('clearing bucket')
             try {
-                await ipcRenderer.invoke("clear-bucket", user)
+                await ipcRenderer.invoke('clear-bucket', user)
             } catch (e) { console.error('clear-bucket failed', e) }
-            ipcRenderer.invoke("fetch-data", { full: true })
+            ipcRenderer.invoke('fetch-data', { full: true })
         }
-        actionsTd.appendChild(clearBtn)
+        actionsDiv.appendChild(clearBtn)
 
-        tr.appendChild(actionsTd)
-        tableBody.appendChild(tr)
+        row.appendChild(actionsDiv)
+        container.appendChild(row)
     }
 
-    table.appendChild(tableBody)
-
-    // wrap table in a scrollable container so the table can auto-size to content
     const wrapper = document.createElement('div')
     wrapper.className = 'tableFixHead'
-    wrapper.appendChild(table)
+    wrapper.appendChild(container)
     mainBody.appendChild(wrapper)
 }
 
