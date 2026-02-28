@@ -80,6 +80,7 @@ async function queryDatabase(filters) {
     const whereClauses = [];
     
     /*
+      <--------------------------------------------------------------------------------------------------------------------------------->
       Note for later:
       Change to select imgId from imageWords where searchKeywords can be found in imagewords table
       then join that list of ids back to our original table
@@ -97,14 +98,19 @@ async function queryDatabase(filters) {
         joinClause = ` INNER JOIN ImageWords AS IMWORDS ON IMGS.id = IMWORDS.imgId`;
         // const placeholders = searchKeywords.map(() => '?').join(',');
         let str = ""
-        for (const w of searchKeywords) {
-          str += `IMWORDS.word LIKE %${w}% or `
+        for(let i = 0; i < searchKeywords.length; i++){
+          let w = searchKeywords[i];
+          str += `IMWORDS.word LIKE '%${w}%'`
+          if(i < searchKeywords.length - 1){
+            str += ` OR `
+          }
         }
 
         whereClauses.push(str);
-        queryParams.push(...searchKeywords);
+        // leaving this function here in case we need to change to mapping keywords to wildcards.
+        // queryParams.push(...searchKeywords);
       }
-        
+
     }
 
     if (searchTags.length > 0) {
