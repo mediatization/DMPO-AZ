@@ -162,7 +162,7 @@ const fetchData = async (event = null) => {
         imageData.push(toReturn);
     }
 
-    if (event) event.sender.send("update-status", "Processing data..")  
+    if (event) event.sender.send("update-status", {message: "Processing data..", duration: 3000})  
 
     console.log("Logging image data from Azure...")
     // For each object v, with inde i
@@ -196,13 +196,12 @@ ipcMain.handle("fetch-data", async (event, args) => {
     catch (err) {
         console.log('err', err)
     }
-    event.sender.send("update-status", "Checking local folders..")
+    
     data = await updateLocalFiles(data)
 
     event.sender.send("update-security-settings", { enforceSecurityCleanup: !!settings.enforceSecurityCleanup });
    
     event.sender.send("update-data", data)
-    event.sender.send("update-status", "Updated")
     return data
 });
 
@@ -349,7 +348,7 @@ const decrypt = async (event, args) => {
         fs.mkdirSync(destFolderName, { recursive: true })
 
     let process = spawn(javaPath, [`Decryptor`, `${key}`, `${folderName}`, destFolderName], )
-    event.sender.send("update-status", "Started decrypting..")
+    event.sender.send("update-status", {message:"Started decrypting..", duration: 3000})
     process.stdout.on("data", data => console.log("data", data.toString()))
     // process.stdout.on("data", data => {})
     process.stderr.on("data", data => {
@@ -630,14 +629,14 @@ ipcMain.handle("clear-bucket", async (event, args) => {
 
 const build = (key, args) =>
 {
-    win.webContents.send("build-notif-start")
+    win.webContents.send("update-status", { message: "ALERT: Building", duration: 60000 })
 
     dmpoPath = __dirname
     // Path for App folder (root folder, not subfolder)
     appPath = settings.appFolder
-    if (!fs.existsSync(appPath)) {
+        if (!fs.existsSync(appPath)) {
         console.log("ERROR: failed to find path %s for app folder", appPath)
-        win.webContents.send("build-notif-failure")
+        win.webContents.send("update-status", { message: "ALERT: Build Failed", duration: 5000 })
         return
     }
     // Path for Constants file
@@ -651,20 +650,20 @@ const build = (key, args) =>
     
     if (!fs.existsSync(constantsPath)) {
         console.log("ERROR: failed to find path %s for constants file", constantsPath)
-        win.webContents.send("build-notif-failure")
+        win.webContents.send("update-status", { message: "ALERT: Build Failed", duration: 5000 })
         return
     }
     // Path for Keys folder
     keysPath = dmpoPath + "/keys"
     if (!fs.existsSync(keysPath)) {
         console.log("ERROR: failed to find path %s for keys folder", constantsPath)
-        win.webContents.send("build-notif-failure")
+        win.webContents.send("update-status", { message: "ALERT: Build Failed", duration: 5000 })
         return
     }
     fs.writeFile(constantsPath, constants(settings.uploadAddress, key, args.hashedKey, args.name), (err) => {
         if (err) {
             console.error('Error occurred writing new values to Constants.java:', err);
-            win.webContents.send("build-notif-failure")
+            win.webContents.send("update-status", { message: "ALERT: Build Failed", duration: 5000 })
         } else {
             console.log('Wrote new values to Constants.java');
             // Build the app apks
@@ -692,7 +691,7 @@ const build = (key, args) =>
             exec(gradleCmd, { cwd: projectDir, maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
                 if (error) {
                     console.error('Gradle build failed:', stderr || error.message);
-                    win.webContents.send("build-notif-failure")
+                    win.webContents.send("update-status", { message: "ALERT: Build Failed", duration: 5000 })
                     return;
                 }
 
@@ -724,7 +723,7 @@ const build = (key, args) =>
 
                 if (!finalApk) {
                     console.error('APK not found (checked expected locations).')
-                    win.webContents.send("build-notif-failure")
+                    win.webContents.send("update-status", { message: "ALERT: Build Failed", duration: 5000 })
                     return
                 }
 
@@ -732,10 +731,10 @@ const build = (key, args) =>
                     fs.mkdirSync(destinationDir, { recursive: true });
                     fs.copyFileSync(finalApk, destPath);
                     console.log('APK copied to:', destPath);
-                    win.webContents.send("build-notif-success")
+                    win.webContents.send("update-status", { message: "ALERT: Build Success", duration: 5000 })
                 } catch (copyErr) {
                     console.error('Failed to copy APK:', copyErr)
-                    win.webContents.send("build-notif-failure")
+                    win.webContents.send("update-status", { message: "ALERT: Build Failed", duration: 5000 })
                 }
             });
         }
@@ -797,13 +796,13 @@ ipcMain.handle("check-passphrase", async (event, args) => {
                     dialog.showErrorBox("Passphrase Error", "Incorrect passphrase. To reset the passphrase for a new project, delete the 'passphrase_hash' file.")
                     console.log("Exiting fetch data due to passphrase warning.")
                     decryptionQueue = [];
-                    win.webContents.send("incorrect-notif")
+                    win.webContents.send("update-status", { message: "ALERT: Passphrase Incorrect", duration: 4000 })
                     resolve(false)
                 }
                 else
                 {
                     console.log("check-passphrase returned true")
-                    win.webContents.send("correct-notif")
+                    win.webContents.send("update-status", { message: "ALERT: Passphrase Correct", duration: 3000 })
                     resolve(true)
                     PASSPHRASE = passNew
                 }
@@ -815,13 +814,13 @@ ipcMain.handle("check-passphrase", async (event, args) => {
                 if (newPass)
                 {
                     console.log("check-passphrase returned true")
-                    win.webContents.send("new-good-pass-notif")
+                    win.webContents.send("update-status", { message: "ALERT: Set New Passphrase", duration: 3000 })
                     resolve(true)
                 }
                 else
                 {
                     decryptionQueue = [];
-                    win.webContents.send("new-bad-pass-notif")
+                    win.webContents.send("update-status", { message: "ALERT: Bad New Passphrase", duration: 4000 })
                     resolve(false)
                 }
             }
@@ -864,9 +863,8 @@ const waitForPassphrase = async () => {
         win2.on('closed', () => {
             if (!returned)
             {
-                // This event is emitted after the window has been closed
                 console.log("Passsphrase window closed early");
-                win.webContents.send("incorrect-notif")
+                win.webContents.send("update-status", { message: "ALERT: Passphrase Incorrect", duration: 4000 })
                 resolve(false)
             }
           });
