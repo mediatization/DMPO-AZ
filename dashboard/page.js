@@ -4,29 +4,22 @@ const { ipcRenderer } = require('electron/renderer');
 
 let data = [];
 
-let enforceSecurityCleanup = false; // Default to true
+let enforceSecurityCleanup = false;
 
-// track per-key download progress: { '<key>': { downloaded, total } }
-let downloadProgress = {}
-
-// small helper used in a few places
-const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
-
-// download notification management so messages persist across refreshes
-let downloadNotifTimeout = null
-function setDownloadNotif(text, duration = 3000) {
-    const el = document.getElementById("download-notif")
+// central status notification management (replaces download-notif)
+let statusNotifTimeout = null
+function setStatusNotif(text, duration = 3000) {
+    const el = document.getElementById("status-notif")
     if (!el) return
-    // show text and keep visible for `duration` ms
-    el.innerText = text
-    el.style.display = "inline-block"
-    if (downloadNotifTimeout) {
-        clearTimeout(downloadNotifTimeout)
+    el.innerText = String(text || '')
+    el.style.display = 'inline-block'
+    if (statusNotifTimeout) {
+        clearTimeout(statusNotifTimeout)
     }
-    downloadNotifTimeout = setTimeout(() => {
-        el.innerText = ""
-        el.style.display = "none"
-        downloadNotifTimeout = null
+    statusNotifTimeout = setTimeout(() => {
+        el.innerText = ''
+        el.style.display = 'none'
+        statusNotifTimeout = null
     }, duration)
 }
 
@@ -61,8 +54,8 @@ function main() {
     ipcRenderer.on('download-progress', (e, args) => {
         // args: { key, downloaded, total, username }
         if (!args || !args.key) return
-        // Show progress in the top-right alert area instead of in each row
-        const el = document.getElementById("download-notif")
+        // Show progress in the alert/status section
+        const el = document.getElementById("status-notif")
         if (!el) return
         const downloaded = Number(args.downloaded || 0)
         const total = Number(args.total || 0)
@@ -95,69 +88,32 @@ function main() {
         // When finished show a brief success message and clear the progress UI
         if (total > 0 && downloaded >= total) {
             setTimeout(() => {
-                setDownloadNotif(args.username ? `${args.username}: Download Complete` : 'Download Complete', 4000)
+                setStatusNotif(args.username ? `${args.username}: Download Complete` : 'Download Complete', 4000)
             }, 300)
         }
     })
-    ipcRenderer.on("update-status", (e, args) => { 
-        const usersCount = document.getElementById("users-count")
-        usersCount.innerText = args
+
+    //expects an object with format {message:string, duration:int}
+    ipcRenderer.on("update-status", (e, args) => {
+        try {
+            // accept either a plain string or an object { message, duration }
+            const msg = args.message || ''
+            const dur = Number(args.duration) || 3000
+            setStatusNotif(msg, dur)
+            return
+        } catch (e) {
+            console.error('update-status routing failed', e)
+        }
     })
 
     document.getElementById("reset-button").onclick = () => {
         electron.ipcRenderer.invoke("reset-timer")
     }
+
     ipcRenderer.on("updateDisplay", (e,args) => {
         document.getElementById("timer-display").textContent = formatTime(args.remainingTime);
-        if (args.remainingTime > 0)
-        {
-            //
-        }
-        else
-        {
-            //
-        }
     })
-    ipcRenderer.on("correct-notif", async(e,args) => {
-        document.getElementById("passphrase-notif").innerText = "ALERT: Passphrase Correct"
-        document.getElementById("passphrase-notif").style.display = "inline-block"
-        await delay(3000)
-        document.getElementById("passphrase-notif").innerText = ""
-        document.getElementById("passphrase-notif").style.display = "none"
-    })
-    ipcRenderer.on("incorrect-notif", (e,args) => {
-        document.getElementById("passphrase-notif").innerText = "ALERT: Passphrase Incorrect"
-        document.getElementById("passphrase-notif").style.display = "inline-block"
-    })
-    ipcRenderer.on("new-good-pass-notif", async(e,args) => {
-        document.getElementById("passphrase-notif").innerText = "ALERT: Set New Passphrase"
-        document.getElementById("passphrase-notif").style.display = "inline-block"
-        await delay(3000)
-        document.getElementById("passphrase-notif").innerText = ""
-        document.getElementById("passphrase-notif").style.display = "none"
-    })
-    ipcRenderer.on("new-bad-pass-notif", (e,args) => {
-        document.getElementById("passphrase-notif").innerText = "ALERT: Bad New Passphrase"
-        document.getElementById("passphrase-notif").style.display = "inline-block"
-    })
-    ipcRenderer.on("build-notif-start", (e,args) => {
-        document.getElementById("build-notif").innerText = "ALERT: Building"
-        document.getElementById("build-notif").style.display = "inline-block"
-    })
-    ipcRenderer.on("build-notif-failure", async(e,args) => {
-        document.getElementById("build-notif").innerText = "ALERT: Build Failed"
-        document.getElementById("build-notif").style.display = "inline-block"
-        await delay(5000)
-        document.getElementById("build-notif").innerText = ""
-        document.getElementById("build-notif").style.display = "none"
-    })
-    ipcRenderer.on("build-notif-success", async(e,args) => {
-        document.getElementById("build-notif").innerText = "ALERT: Build Success"
-        document.getElementById("build-notif").style.display = "inline-block"
-        await delay(5000)
-        document.getElementById("build-notif").innerText = ""
-        document.getElementById("build-notif").style.display = "none"
-    })
+
     setInterval(() => { 
         electron.ipcRenderer.invoke("is-online")
         .then(online => {
@@ -256,13 +212,13 @@ function render() {
         let dlBtn = createNode('p', 'Download', 'button default-hidden')
         dlBtn.onclick = async () => {
             console.log('downloading')
-            try {
-                await ipcRenderer.invoke('download-images', user)
-                setDownloadNotif(`${user.name}: Download Success`, 4000)
-            } catch (err) {
-                console.error('download failed for user', user, err)
-                setDownloadNotif(`${user.name}: Download Failed`, 6000)
-            } finally {
+                try {
+                    await ipcRenderer.invoke('download-images', user)
+                    setStatusNotif(`${user.name}: Download Success`, 4000)
+                } catch (err) {
+                    console.error('download failed for user', user, err)
+                    setStatusNotif(`${user.name}: Download Failed`, 6000)
+                } finally {
                 ipcRenderer.invoke('fetch-data', { full: true })
             }
         }
