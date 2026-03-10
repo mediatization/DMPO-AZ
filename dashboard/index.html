@@ -9,27 +9,34 @@
   <link rel="stylesheet" href="style.css">
 
   <body id='body' style='height: 90%; margin: 0px; background-image: url("logo.png"); background-repeat: no-repeat; background-position: center; background-attachment: fixed; font-family: system-ui;'>
-    <div class="title-bar">
-      <div class="hor">
-        <p id="users-count"></p>
-        <p class="button" id="refresh-button">Refresh</p>
-        <p id="timer-display">00:00</p>
-        <p class="button" id="reset-button">Reset</p>
-      </div>
-      <div class="hor">
-        <p class="button" id="onboard-button">Onboard Participant</p> 
-      </div> 
-      <div class="hor">
-        <p class="button" id="image-analysis">To Image Analysis</p>
-      </div>
-      <p id="passphrase-notif"></p>
-      <p id="build-notif"></p>
-  <p id="download-notif"></p>
-      <p id="online-warning"></p>
-    </div>
-    
-    <div id='main'></div>
+    <div class="container">
 
+      <div class="title-bar">
+
+        <div class="hor">
+          Dashboard
+        </div>
+
+        <div class="hor">
+          <p id="users-count"></p>
+          <p class="button" id="refresh-button">Refresh</p>
+          <p id="timer-display">00:00</p>
+          <p class="button" id="reset-button">Reset</p>
+        </div>
+        <div class="hor">
+          <p class="button" id="onboard-button">Onboard Participant</p> 
+        </div> 
+        <div class="hor">
+          <p class="button" id="image-analysis">To Image Analysis</p>
+        </div>
+        <p id="passphrase-notif"></p>
+        <p id="build-notif"></p>
+        <p id="download-notif"></p>
+        <p id="online-warning"></p>
+      </div>
+      
+      <div id='main'></div>
+    </div>
   </body>
   <script src='./page.js'></script>
 </html>

@@ -43,6 +43,11 @@ function main() {
     }    
     document.getElementById("onboard-button").style.display = "block";
 
+    const ob = document.getElementById("onboard-button");
+    if (ob) ob.classList.add('default-muted');
+    const ia = document.getElementById("image-analysis");
+    if (ia) ia.classList.add('default-muted');
+
     ipcRenderer.on("update-security-settings", (e, args) => { 
         enforceSecurityCleanup = args.enforceSecurityCleanup;
     });
@@ -56,8 +61,43 @@ function main() {
     ipcRenderer.on('download-progress', (e, args) => {
         // args: { key, downloaded, total, username }
         if (!args || !args.key) return
-        downloadProgress[args.key] = { downloaded: args.downloaded, total: args.total, username: args.username }
-        render()
+        // Show progress in the top-right alert area instead of in each row
+        const el = document.getElementById("download-notif")
+        if (!el) return
+        const downloaded = Number(args.downloaded || 0)
+        const total = Number(args.total || 0)
+        const percent = total > 0 ? Math.round((downloaded / total) * 100) : 0
+
+        // build inline progress display
+        el.style.display = 'inline-block'
+        el.innerHTML = ''
+        const title = document.createElement('div')
+        title.style.fontWeight = '600'
+        title.style.marginBottom = '6px'
+        title.textContent = args.username ? `${args.username}: Downloading` : 'Downloading'
+
+        const outer = document.createElement('div')
+        outer.className = 'progress-outer'
+        outer.style.width = '200px'
+        const inner = document.createElement('div')
+        inner.className = 'progress-inner'
+        inner.style.width = percent + '%'
+        outer.appendChild(inner)
+
+        const info = document.createElement('div')
+        info.className = 'progress-text'
+        info.textContent = total > 0 ? `${downloaded}/${total} (${percent}%)` : `${downloaded}`
+
+        el.appendChild(title)
+        el.appendChild(outer)
+        el.appendChild(info)
+
+        // When finished show a brief success message and clear the progress UI
+        if (total > 0 && downloaded >= total) {
+            setTimeout(() => {
+                setDownloadNotif(args.username ? `${args.username}: Download Complete` : 'Download Complete', 4000)
+            }, 300)
+        }
     })
     ipcRenderer.on("update-status", (e, args) => { 
         const usersCount = document.getElementById("users-count")
@@ -163,39 +203,10 @@ function render() {
     // header row
     const headerRow = createNode('div', null, 'row header-row')
     headerRow.appendChild(createNode('div', 'Username', 'username-label cell header-cell'))
-    headerRow.appendChild(createNode('div', 'Progress', 'progress-label cell header-cell'))
     headerRow.appendChild(createNode('div', 'Last Capture', 'time-label cell header-cell'))
     headerRow.appendChild(createNode('div', 'In Bucket', 'number cell header-cell'))
     headerRow.appendChild(createNode('div', 'Downloaded', 'number downloaded-col cell header-cell'))
     headerRow.appendChild(createNode('div', 'Decrypted', 'number cell header-cell'))
-
-    const actionsHeader = createNode('div', null, 'actions-col cell header-cell')
-    const downloadAllBtn = createNode('p', 'Download All', 'button default-hidden')
-    downloadAllBtn.onclick = async () => {
-        console.log('downloading all')
-        try {
-            const promises = data.map(user => ipcRenderer.invoke('download-images', user))
-            await Promise.all(promises)
-            setDownloadNotif('Download All: Success', 4000)
-        } catch (err) {
-            console.error('download all failed', err)
-            setDownloadNotif('Download All: Failed', 6000)
-        } finally {
-            ipcRenderer.invoke('fetch-data', { full: true })
-        }
-    }
-    const buildAllBtn = createNode('p', 'Build All', 'button default-hidden')
-    buildAllBtn.onclick = async() => {
-        console.log('building all')
-        let askForPassphrase = true
-        data.forEach(user => {
-            ipcRenderer.invoke('build-for-user', user, askForPassphrase)
-            askForPassphrase = false
-        })
-    }
-    actionsHeader.appendChild(downloadAllBtn)
-    actionsHeader.appendChild(buildAllBtn)
-    headerRow.appendChild(actionsHeader)
 
     container.appendChild(headerRow)
 
@@ -206,25 +217,7 @@ function render() {
         // username
         row.appendChild(createNode('div', user.name, 'username-label cell'))
 
-        // progress
-        const keyPrefix = user.hashedKey ? user.hashedKey.slice(0,8) : (user.username || '')
-        const progCell = createNode('div', null, 'progress-cell cell')
-        const progData = downloadProgress[keyPrefix]
-        if (progData && progData.total > 0) {
-            const percent = Math.round((progData.downloaded / progData.total) * 100)
-            const barOuter = document.createElement('div')
-            barOuter.className = 'progress-outer'
-            const barInner = document.createElement('div')
-            barInner.className = 'progress-inner'
-            barInner.style.width = percent + '%'
-            barOuter.appendChild(barInner)
-            const text = document.createElement('div')
-            text.className = 'progress-text'
-            text.textContent = `${progData.downloaded}/${progData.total} (${percent}%)`
-            progCell.appendChild(barOuter)
-            progCell.appendChild(text)
-        }
-        row.appendChild(progCell)
+        // (progress column removed) -- progress shown in header alerts
 
         const timeDiv = createNode('div', user.lastImageAddedOn == 'N.A.' ? '' : user.timeSince, 'time-label cell')
         timeDiv.onmouseenter = () => {
@@ -253,6 +246,13 @@ function render() {
 
         const actionsDiv = createNode('div', null, 'actions-col cell')
 
+        let buildBtn = createNode('p', 'Build', 'button default-hidden')
+        buildBtn.onclick = () => {
+            console.log('building for user')
+            ipcRenderer.invoke('build-for-user', user, true)
+        }
+        actionsDiv.appendChild(buildBtn)
+
         let dlBtn = createNode('p', 'Download', 'button default-hidden')
         dlBtn.onclick = async () => {
             console.log('downloading')
@@ -267,13 +267,6 @@ function render() {
             }
         }
         actionsDiv.appendChild(dlBtn)
-
-        let buildBtn = createNode('p', 'Build', 'button default-hidden')
-        buildBtn.onclick = () => {
-            console.log('building for user')
-            ipcRenderer.invoke('build-for-user', user, true)
-        }
-        actionsDiv.appendChild(buildBtn)
 
         let decBtn = createNode('p', 'Decrypt', 'button default-hidden')
         decBtn.onclick = () => {
