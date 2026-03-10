@@ -146,8 +146,6 @@ function createNode(type, text, className) {
 
 function render() {
     console.log("DATA", data)
-    const usersCount = document.getElementById("users-count")
-    usersCount.innerText = `${data.length} users loaded.`
 
     const mainBody = document.getElementById("main")
     mainBody.textContent = ""

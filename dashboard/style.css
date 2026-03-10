@@ -15,11 +15,10 @@ body {
     background: var(--bg);
     color: #0f172a;
     line-height: 1.35;
-    height: 100%;
 }
 
 .container {
-    max-width: 1200px;
+    max-width: 95%;
     margin: 12px auto;
     padding: 8px;
 }
@@ -33,7 +32,8 @@ body {
     justify-content: space-between;
     background: var(--panel);
     border: 1px solid var(--border);
-    padding: 8px 10px;
+    padding-left: 8px;
+    padding-right: 8px;
     border-radius: 6px;
     gap: 8px;
 }
@@ -56,9 +56,6 @@ body {
 
 #main { margin-top: 12px; }
 
-p { margin: 0; }
-#users-count { margin-left: 6px; }
-
 /* scrollable wrapper */
 .tableFixHead {
     width: 100%;
@@ -72,11 +69,26 @@ p { margin: 0; }
 /* data container - vertical stack of rows */
 .data-table { display: flex; flex-direction: column; width: 100%; box-sizing: border-box; }
 
-.header-row { display: flex; align-items: center; position: sticky; top: 0; z-index: 150; background: var(--panel); box-shadow: 0 1px 3px rgba(0,0,0,0.06); border-bottom: 1px solid var(--border); }
-.row { display: flex; align-items: center; min-height: 36px; border-bottom: 1px solid var(--border); background: transparent; }
+.header-row { 
+    display: flex; 
+    align-items: center; 
+    top: 0; 
+    z-index: 150; 
+    background: var(--panel); 
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06); 
+    border-bottom: 1px solid var(--border); 
+}
+
+.row { 
+    display: flex; 
+    align-items: center; 
+    min-height: 36px; 
+    border-bottom: 1px solid var(--border); 
+    background: transparent; 
+}
 .row:hover { background: #fff; }
 
-.cell { padding: 8px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-sizing: border-box; }
+.cell { padding: 8px 10px; white-space: nowrap; box-sizing: border-box; }
 .header-cell { font-weight: 700; }
 
 .row .default-hidden { opacity: 0; transition: opacity 120ms; }
@@ -84,11 +96,10 @@ p { margin: 0; }
 
 /* columns sizing using flex-basis (fixed widths similar to table columns) */
 .username-label { flex: 0 0 150px; }
-.progress-cell { flex: 0 0 170px; min-width: 120px; }
 .time-label { flex: 0 0 120px; }
 .number { flex: 0 0 80px; text-align: right; padding-right: 8px; }
 .downloaded-col { flex: 0 0 140px; text-align: right; padding-right: 12px; }
-.actions-col { flex: 0 0 280px; background: var(--panel); z-index: 20; }
+.actions-col { flex: 0 0 280px; z-index: 20;}
 
 .progress-outer { width: 120px; height: 6px; background: #eee; border-radius: 4px; overflow: hidden; margin-right: 8px; display: inline-block; vertical-align: middle; }
 .progress-inner { height: 100%; background: linear-gradient(90deg, #60b7e9, #3aa0d6); width: 0%; transition: width 150ms linear; }
