@@ -88,27 +88,51 @@ async function queryDatabase(filters) {
     */
     if (searchKeywords.length > 0) {
       if (matchMode === 'EXACT'){
+        /*
         joinClause = ` INNER JOIN ImageWords AS IMWORDS ON IMGS.id = IMWORDS.imgId`;
         const placeholders = searchKeywords.map(() => '?').join(',');
         whereClauses.push(`IMWORDS.word IN (${placeholders})`);
         queryParams.push(...searchKeywords);
+        */
+        
+        // SQL query optimization prototype 
+        const placeholders = searchKeywords.map(() => '?').join(',');
+        const relvKeyWords = `SELECT imgId, word FROM ImageWords WHERE word IN (${placeholders})`; 
+        joinClause = ` INNER JOIN (${relvKeyWords}) AS IMWORDS ON IMGS.id = IMWORDS.imgId`;
+        queryParams.push(...searchKeywords);
       }
       // case for matchMode === 'PARTIAL'
       else{
-        joinClause = ` INNER JOIN ImageWords AS IMWORDS ON IMGS.id = IMWORDS.imgId`;
-        // const placeholders = searchKeywords.map(() => '?').join(',');
+        // joinClause = ` INNER JOIN ImageWords AS IMWORDS ON IMGS.id = IMWORDS.imgId`;
+        // // const placeholders = searchKeywords.map(() => '?').join(',');
+        // let str = ""
+        // for(let i = 0; i < searchKeywords.length; i++){
+        //   let w = searchKeywords[i];
+        //   str += `IMWORDS.word LIKE '%${w}%'`
+        //   if(i < searchKeywords.length - 1){
+        //     str += ` OR `
+        //   }
+        // }
+
+        // whereClauses.push(str);
+
+        // leaving this function here in case we need to change to mapping keywords to wildcards.
+        // queryParams.push(...searchKeywords);
+
+        
+        // Prototype implementation of optimized SQL query generation
         let str = ""
         for(let i = 0; i < searchKeywords.length; i++){
           let w = searchKeywords[i];
-          str += `IMWORDS.word LIKE '%${w}%'`
+          str += `word LIKE '%${w}%'`
           if(i < searchKeywords.length - 1){
             str += ` OR `
           }
         }
 
-        whereClauses.push(str);
-        // leaving this function here in case we need to change to mapping keywords to wildcards.
-        // queryParams.push(...searchKeywords);
+        const relvKeyWords = `SELECT imgId, word FROM ImageWords WHERE ${str}`; 
+        joinClause = ` INNER JOIN (${relvKeyWords}) AS IMWORDS ON IMGS.id = IMWORDS.imgId`;
+        
       }
 
     }
