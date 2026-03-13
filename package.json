@@ -1,16 +1,26 @@
 {
   "name": "DMPO",
   "version": "1.0.0",
-  "description": "",
+  "description": "Data management and Parcticipant Onboarding tool for screenomics research.",
   "main": "main.js",
   "scripts": {
-    "start": "electron .",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "electron-forge start",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "package": "electron-forge package",
+    "make": "electron-forge make"
   },
   "keywords": [],
-  "author": "",
+  "author": "RPI Mediatization Lab <mediatization-lab@rpi.edu>",
   "license": "ISC",
   "devDependencies": {
+    "@electron-forge/cli": "^7.11.1",
+    "@electron-forge/maker-deb": "^7.11.1",
+    "@electron-forge/maker-rpm": "^7.11.1",
+    "@electron-forge/maker-squirrel": "^7.11.1",
+    "@electron-forge/maker-zip": "^7.11.1",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.11.1",
+    "@electron-forge/plugin-fuses": "^7.11.1",
+    "@electron/fuses": "^1.8.0",
     "electron": "^31.0.1"
   },
   "dependencies": {
@@ -20,6 +30,7 @@
     "@types/node": "^20.14.2",
     "bcryptjs": "^2.4.3",
     "check-internet-connected": "^2.0.5",
+    "electron-squirrel-startup": "^1.0.1",
     "os": "^0.1.2",
     "prompt-sync": "^4.2.0",
     "qrcode": "^1.5.0",
