@@ -79,22 +79,8 @@ async function queryDatabase(filters) {
     let joinClause = '';
     const whereClauses = [];
     
-    /*
-      <--------------------------------------------------------------------------------------------------------------------------------->
-      Note for later:
-      Change to select imgId from imageWords where searchKeywords can be found in imagewords table
-      then join that list of ids back to our original table
-      instead of just constructing as one big sql call
-    */
     if (searchKeywords.length > 0) {
       if (matchMode === 'EXACT'){
-        /*
-        joinClause = ` INNER JOIN ImageWords AS IMWORDS ON IMGS.id = IMWORDS.imgId`;
-        const placeholders = searchKeywords.map(() => '?').join(',');
-        whereClauses.push(`IMWORDS.word IN (${placeholders})`);
-        queryParams.push(...searchKeywords);
-        */
-        
         // SQL query optimization prototype 
         const placeholders = searchKeywords.map(() => '?').join(',');
         const relvKeyWords = `SELECT imgId, word FROM ImageWords WHERE word IN (${placeholders})`; 
@@ -103,23 +89,6 @@ async function queryDatabase(filters) {
       }
       // case for matchMode === 'PARTIAL'
       else{
-        // joinClause = ` INNER JOIN ImageWords AS IMWORDS ON IMGS.id = IMWORDS.imgId`;
-        // // const placeholders = searchKeywords.map(() => '?').join(',');
-        // let str = ""
-        // for(let i = 0; i < searchKeywords.length; i++){
-        //   let w = searchKeywords[i];
-        //   str += `IMWORDS.word LIKE '%${w}%'`
-        //   if(i < searchKeywords.length - 1){
-        //     str += ` OR `
-        //   }
-        // }
-
-        // whereClauses.push(str);
-
-        // leaving this function here in case we need to change to mapping keywords to wildcards.
-        // queryParams.push(...searchKeywords);
-
-        
         // Prototype implementation of optimized SQL query generation
         let str = ""
         for(let i = 0; i < searchKeywords.length; i++){
@@ -138,11 +107,36 @@ async function queryDatabase(filters) {
     }
 
     if (searchTags.length > 0) {
+      /*
+      // Potential point of optimization: limit tags only to searched tags before joining
+      // with relevant images. Currently joins all tags with all images before filtering
         joinClause += ` INNER JOIN ImageTags as IMTAGS on IMGS.id = IMTAGS.imgid`;
+
+        // Below join clause is what can be optimized. Filter through specified tags in subquery
+        // then join here instead of checking in where statement: reduces number of times checked. 
         joinClause += ` INNER JOIN Tags as TAGS on IMTAGS.tagId = TAGS.id`;
         const tagPlaceholders = searchTags.map(() => '?').join(',');
         whereClauses.push(`TAGS.tag IN (${tagPlaceholders})`);
         queryParams.push(...searchTags);
+      */
+        
+        // Prototype for searching by Tag Optimization
+        const tagPlaceholders = searchTags.map(() => '?').join(',');
+        joinClause += ` INNER JOIN ImageTags as IMTAGS on IMGS.id = IMTAGS.imgid`;
+        const relvTags = `SELECT id, tag FROM Tags WHERE tag IN (${tagPlaceholders})`;
+        joinClause += ` INNER JOIN (${relvTags}) as TAGS on IMTAGS.tagId = TAGS.id`;
+        queryParams.push(...searchTags);
+        
+        /*
+
+        A potential alternate, further optimization could include rewriting the entire queryDatabase function
+        such that it consists of multiple queries that are put through intersect functions. Would depend on
+        SQLite's inbuilt optimization of intersect w/respect to usage of tables on whether or not it would be
+        more optimal than this method. Current methodology is to minizmize the number of data entries that would
+        have to be cycled through within current framework. Worth a consideration, as it would also be more readable.
+        Also all of the prototypes need further stress testing.
+
+        */
     }
 
     // --- Start Filter ---
