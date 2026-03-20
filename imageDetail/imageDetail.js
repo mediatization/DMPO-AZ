@@ -36,9 +36,10 @@ async function getImageWords(imageId) {
 }
 
 function renderMetadata(image, keywords) {
+    // this is not really readable by humans. might be worth refactoring
+    // for readability.
     const dl = document.getElementById('metaList');
     dl.innerHTML = '';
-
     function add(k, v) {
         const dt = document.createElement('dt');
         dt.textContent = k;
@@ -158,6 +159,11 @@ async function renderTagsAndNotes(image) {
     notesBox.value = image.notes || '';
 }
 
+/*
+    DEBUG:
+    this is the function that queries that database for all of the relevant tags, and adds them
+    as selectable options in the input field's dropdown list.
+*/
 async function loadAllTags() {
     const rows = await new Promise((res, rej) => {
         db.all(`SELECT tag FROM Tags`, [], (err, rows) => err ? rej(err) : res(rows));

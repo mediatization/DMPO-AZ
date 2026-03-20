@@ -107,36 +107,12 @@ async function queryDatabase(filters) {
     }
 
     if (searchTags.length > 0) {
-      /*
-      // Potential point of optimization: limit tags only to searched tags before joining
-      // with relevant images. Currently joins all tags with all images before filtering
-        joinClause += ` INNER JOIN ImageTags as IMTAGS on IMGS.id = IMTAGS.imgid`;
-
-        // Below join clause is what can be optimized. Filter through specified tags in subquery
-        // then join here instead of checking in where statement: reduces number of times checked. 
-        joinClause += ` INNER JOIN Tags as TAGS on IMTAGS.tagId = TAGS.id`;
-        const tagPlaceholders = searchTags.map(() => '?').join(',');
-        whereClauses.push(`TAGS.tag IN (${tagPlaceholders})`);
-        queryParams.push(...searchTags);
-      */
-        
         // Prototype for searching by Tag Optimization
         const tagPlaceholders = searchTags.map(() => '?').join(',');
         joinClause += ` INNER JOIN ImageTags as IMTAGS on IMGS.id = IMTAGS.imgid`;
         const relvTags = `SELECT id, tag FROM Tags WHERE tag IN (${tagPlaceholders})`;
         joinClause += ` INNER JOIN (${relvTags}) as TAGS on IMTAGS.tagId = TAGS.id`;
         queryParams.push(...searchTags);
-        
-        /*
-
-        A potential alternate, further optimization could include rewriting the entire queryDatabase function
-        such that it consists of multiple queries that are put through intersect functions. Would depend on
-        SQLite's inbuilt optimization of intersect w/respect to usage of tables on whether or not it would be
-        more optimal than this method. Current methodology is to minizmize the number of data entries that would
-        have to be cycled through within current framework. Worth a consideration, as it would also be more readable.
-        Also all of the prototypes need further stress testing.
-
-        */
     }
 
     // --- Start Filter ---
@@ -207,7 +183,7 @@ async function queryDatabase(filters) {
     }
     
     const offset = (page - 1) * itemsPerPage;
-    const pagedIdQuery = idQuery + ` ORDER BY IMGS.date DESC, IMGS.id DESC LIMIT ? OFFSET ?`;
+    const pagedIdQuery = idQuery + ` ORDER BY IMGS.date ASC, IMGS.id ASC LIMIT ? OFFSET ?`;
     const idRows = await new Promise((res, rej) => {
             db.all(pagedIdQuery, [...queryParams, itemsPerPage, offset], (err, rows) => err ? rej(err) : res(rows));
     });
@@ -222,7 +198,7 @@ async function queryDatabase(filters) {
         SELECT id, imgPath, date, user
         FROM Images 
         WHERE id IN (${idPlaceholders})
-        ORDER BY date DESC, id DESC`;
+        ORDER BY date ASC, id ASC`;
     
     const images = await new Promise((res, rej) => {
         db.all(dataQuery, ids, (err, rows) => err ? rej(err) : res(rows));
@@ -505,6 +481,43 @@ async function initializeApp() {
     
     await updateRegisteredCount();
     performSearch(true);
+    try { await loadAllTags(); } catch (e) {}
+    try { await loadAllUsers(); } catch (e) {}
+}
+
+// cribbed largely from imageDetail.html. if something goes wrong with it, cross reference with
+// that implementation.
+async function loadAllTags() {
+    const rows = await new Promise((res, rej) => {
+        db.all(`SELECT tag FROM Tags`, [], (err, rows) => err ? rej(err) : res(rows));
+    });
+
+    const tags = rows.map(r => r.tag);
+    const list = document.getElementById('tagsList');
+    list.innerHTML = '';
+
+    tags.sort().forEach(tag => {
+        const opt = document.createElement('option');
+        opt.value = tag;
+        list.appendChild(opt);
+    });
+}
+
+// based on above function
+async function loadAllUsers() {
+    const rows = await new Promise((res, rej) => {
+        db.all(`SELECT distinct user FROM Images`, [], (err, rows) => err ? rej(err) : res(rows));
+    });
+
+    const users = rows.map(r => r.user);
+    const list = document.getElementById('usersList');
+    list.innerHTML = '';
+
+    users.sort().forEach(user => {
+        const opt = document.createElement('option');
+        opt.value = user;
+        list.appendChild(opt);
+    });
 }
 
 // Event Listeners
@@ -528,6 +541,9 @@ if (searchBtn) searchBtn.addEventListener('click', () => {
     }
   });
 });
+
+loadAllTags().catch(err => console.error('Could not load tag list:', err));
+loadAllUsers().catch(err => console.error('Could not load user list:', err));
 
 // Initialize
 initializeApp();
