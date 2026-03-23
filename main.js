@@ -645,7 +645,7 @@ const build = (key, args) =>
         constantsPath = appPath + "\\app\\src\\main\\java\\com\\example\\screenlife2\\Constants.java";
     }
     else {
-        constantsPath = appPath + "\\app\\src\\main\\java\\com\\example\\screenlife2\\Constants.java";
+        constantsPath = appPath + "/app/src/main/java/com/example/screenlife2/Constants.java";
     }
     
     if (!fs.existsSync(constantsPath)) {
