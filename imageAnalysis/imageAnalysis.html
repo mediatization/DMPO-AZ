@@ -252,6 +252,19 @@
             return processedCount;
         }
 
+        /*
+            DEBUG - Description of problem:
+            Currently, when a user manually deletes a file from the decrypted images directory,
+            this function will scan the database, and see that there is an entry pointing to a
+            (now) nonexistent datapath. Update this function such that if there exists an entry
+            in the database that doesn't correspond to an existing file, that entry will be
+            deleted from the database.
+
+
+            Order of events:
+            searchForImagesToScan() ==> performOCR()
+            
+        */
         async function searchForImagesToScan(db) {
             statusEl.textContent = 'Scanning for new images...';
             const scannedImgs = new Set();

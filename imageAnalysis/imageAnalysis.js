@@ -2,6 +2,7 @@
 const { ipcRenderer } = require('electron/renderer');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const fs = require('fs').promises;
 
 // Database setup and connection
 const db = new sqlite3.Database('imgDb');
@@ -447,6 +448,47 @@ async function performSearch(resetPage = true) {
     console.error('Error performing search:', err);
     imageTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:red;">An error occurred during search.</td></tr>';
   }
+
+  // each time after a search on the database is completed, the application will scan it's
+  // decrypted files directory and send back a query 
+  checkForDeleted();
+}
+
+// should scan the directory for any images that weren't returned by the search result
+async function checkForDeleted() {
+  /*
+    Ouline of function: should scan through the directory, then send set of image paths/ids to
+    database. Database will then delete entries for any images that belong to this user that no longer
+    currently exist in their directory. We are assuming that the user is only searching their data set
+    once they've already downloaded it from the database, and thus any not-existing files must've been
+    intentionally deleted from the local directory.
+  */
+
+  // search image directory with completed query results here?
+  // Recursively scan the decrypted directory (Function from imagaAnalysis.html file)
+
+  // __dirname is a global constant, I'm pretty sure.
+  const decryptedPath = path.join(__dirname, '../decrypted');
+
+  async function scanDirectory(dirPath) {
+    try {
+        const items = await fs.readdir(dirPath);
+        for (const item of items) {
+            const fullPath = path.join(dirPath, item);
+            const stat = await fs.stat(fullPath);
+                        
+            if (stat.isDirectory()) {
+                await scanDirectory(fullPath);
+            } else if (!scannedImgs.has(fullPath)) {
+                toScan.push(fullPath);
+            }
+          }
+        } catch (error) {
+            console.log('Error reading directory:', error.message);
+        }
+  }
+
+  await scanDirectory(decryptedPath);
 }
 
 async function updateRegisteredCount() {
