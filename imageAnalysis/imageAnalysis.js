@@ -468,6 +468,9 @@ async function checkForDeleted() {
   // Recursively scan the decrypted directory (Function from imagaAnalysis.html file)
 
   // __dirname is a global constant, I'm pretty sure.
+  const databaseImgs = new Set();
+  let localFiles = new Set();
+  let toDelete = new Set();
   const decryptedPath = path.join(__dirname, '../decrypted');
 
   async function scanDirectory(dirPath) {
@@ -479,8 +482,8 @@ async function checkForDeleted() {
                         
             if (stat.isDirectory()) {
                 await scanDirectory(fullPath);
-            } else if (!scannedImgs.has(fullPath)) {
-                toScan.push(fullPath);
+            } else {
+                localFiles.add(fullPath);
             }
           }
         } catch (error) {
@@ -489,6 +492,31 @@ async function checkForDeleted() {
   }
 
   await scanDirectory(decryptedPath);
+
+  // Get all paths already in the DB
+  await new Promise((resolve, reject) => {
+      db.each("SELECT imgPath FROM Images", (err, row) => {
+      if (err) return reject(err);
+      databaseImgs.add(row.imgPath);
+    }, (err, count) => err ? reject(err) : resolve(count));
+  });
+
+  // loops through all of the files currently in the imgDb file, and if it doesn't exist
+  // in the decrypted files folder, prints out that filepath
+  for (const file of databaseImgs){
+    if(!localFiles.has(file)){
+      // console.log(file);
+      toDelete.add(file);
+    }
+  }
+
+  // console.log(toDelete);
+
+  /* 
+    By this point, every file that exists within the imgDb file but not the local decrypted
+    directory should be included in the toDelete set. Have to generate an SQL query that
+    deletes the corresponding files from the imgDb file.
+  */
 }
 
 async function updateRegisteredCount() {
