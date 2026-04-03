@@ -516,7 +516,20 @@ async function checkForDeleted() {
     By this point, every file that exists within the imgDb file but not the local decrypted
     directory should be included in the toDelete set. Have to generate an SQL query that
     deletes the corresponding files from the imgDb file.
+
+    SQL query pseudocode
+
+    DELETE FROM Images
+    WHERE
+        imgPath in {deletePlaceholders}
   */
+
+  // checks if there are any images that need to be deleted from the database. If so, delete the relevant entries.
+  if(toDelete.length > 0){
+      const deletePlaceholders = [toDelete].map(() => '?').join(',');
+      deleteQuery = `DELETE FROM Images WHERE imgPath in (${deletePlaceholders})`;
+      await db.run(deleteQuery);
+  } 
 }
 
 async function updateRegisteredCount() {
