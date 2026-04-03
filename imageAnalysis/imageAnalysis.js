@@ -33,6 +33,7 @@ db.serialize(() => {
         FOREIGN KEY (imgId) REFERENCES Images(id) ON DELETE CASCADE,
         FOREIGN KEY (tagId) REFERENCES Tags(id) ON DELETE CASCADE
     )`);
+    checkForDeleted();
 });
 
 // DOM Elements
@@ -201,6 +202,8 @@ async function queryDatabase(filters) {
         WHERE id IN (${idPlaceholders})
         ORDER BY date ASC, id ASC`;
     
+    console.log("Query database map item example: ");
+    console.log(idPlaceholders);
     const images = await new Promise((res, rej) => {
         db.all(dataQuery, ids, (err, rows) => err ? rej(err) : res(rows));
     });
@@ -441,7 +444,9 @@ async function performSearch(resetPage = true) {
 
     PAGINATION_SETTINGS.totalResults = totalResults;
     PAGINATION_SETTINGS.totalPages = Math.ceil(totalResults / PAGINATION_SETTINGS.ITEMS_PER_PAGE);
-    
+    // each time after a search on the database is completed, the application will scan it's
+    // decrypted files directory and send back a query 
+    await checkForDeleted();
     await applyRender(images); 
   
   } catch (err) {
@@ -449,9 +454,7 @@ async function performSearch(resetPage = true) {
     imageTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:red;">An error occurred during search.</td></tr>';
   }
 
-  // each time after a search on the database is completed, the application will scan it's
-  // decrypted files directory and send back a query 
-  checkForDeleted();
+
 }
 
 // should scan the directory for any images that weren't returned by the search result
@@ -505,7 +508,7 @@ async function checkForDeleted() {
   // in the decrypted files folder, prints out that filepath
   for (const file of databaseImgs){
     if(!localFiles.has(file)){
-      // console.log(file);
+      console.log(file);
       toDelete.add(file);
     }
   }
@@ -525,15 +528,25 @@ async function checkForDeleted() {
   */
 
   // checks if there are any images that need to be deleted from the database. If so, delete the relevant entries.
-  if(toDelete.length > 0){
-      const deletePlaceholders = [toDelete].map(() => '?').join(',');
-      deleteQuery = `DELETE FROM Images WHERE imgPath in (${deletePlaceholders})`;
-      await db.run(deleteQuery);
+  if(toDelete.size > 0){
+      console.log("There is a file that needs to be deleted from the database.")
+      const toDeleteArray = [...toDelete]
+      const deletePlaceholders = toDeleteArray.map(() => '?').join(',');
+      console.log(toDeleteArray);
+      const deleteQuery = `DELETE FROM Images WHERE imgPath in (${deletePlaceholders})`;
+      console.log("deleteQuery: %s", deleteQuery);
+      await db.run(deleteQuery, toDeleteArray);
+      const totalResults = await getRegisteredCount();
+      console.log("count in database after toDelete executes: %d", totalResults);
+      PAGINATION_SETTINGS.totalResults = totalResults;
   } 
+
 }
 
 async function updateRegisteredCount() {
+  
     try {
+        console.log("Entered updateRegisteredCount!");
         const count = await getRegisteredCount();
         registeredCountEl.textContent = count;
     } catch (e) {
