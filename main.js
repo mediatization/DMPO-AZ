@@ -14,13 +14,23 @@ const QRCode = require("qrcode");
 const { exec } = require('child_process');
 const path = require('path');
 
+const getResourcePath = (relPath) => {
+    return app.isPackaged ? path.join(process.resourcesPath, relPath) : path.join(__dirname, relPath);
+};
+
+// Handle Squirrel events
+if (require('electron-squirrel-startup')) {
+  app.quit();
+}
+
 let decryptionQueue = []
 
 const downloader = new Downloader()
 
 let settings = {}
-if (fs.existsSync("default-settings.json")) {
-    settings = JSON.parse(fs.readFileSync("default-settings.json"))
+const settingsPath = getResourcePath('default-settings.json')
+if (fs.existsSync(settingsPath)) {
+    settings = JSON.parse(fs.readFileSync(settingsPath))
 }
 console.log(settings);
 
@@ -29,8 +39,19 @@ const AZURE_ACC_NAME = settings.accountName
 const AZURE_ACC_URL = settings.accountUrl
 const AZURE_ACC_KEY = settings.accountKey
 
-// Create the BlobServiceClient object with connection string
-const blobServiceClient = new Storage.BlobServiceClient(AZURE_ACC_URL, new Storage.StorageSharedKeyCredential( AZURE_ACC_NAME, AZURE_ACC_KEY));
+// Create the BlobServiceClient object with connection string, but guard against missing config
+let blobServiceClient = null
+if (AZURE_ACC_NAME && AZURE_ACC_URL && AZURE_ACC_KEY) {
+    try {
+        const credential = new Storage.StorageSharedKeyCredential(AZURE_ACC_NAME, AZURE_ACC_KEY)
+        blobServiceClient = new Storage.BlobServiceClient(AZURE_ACC_URL, credential);
+    } catch (e) {
+        console.error('Failed to create Azure BlobServiceClient', e)
+        blobServiceClient = null
+    }
+} else {
+    console.warn('Azure storage not configured (missing accountName/accountUrl/accountKey). Azure features will be disabled until configured.')
+}
 
 
 let data = [];
@@ -319,7 +340,7 @@ const decrypt = async (event, args) => {
 
     const key = decipher({encryptedKey: args.encryptedKey, iv: args.iv})
     const javaPath = settings.javaPath || "java.exe"
-    const decryptorPath = resolve("./Decryptor.class")
+    const decryptorPath = getResourcePath('Decryptor.class')
 
     console.log("Args: ")
     console.log(args)
@@ -378,10 +399,9 @@ const addToDb = async (folderPath) => {
 
     // create worker 
     const worker = await createWorker({
-        workerPath: path.join(__dirname, 'node_modules', 'tesseract.js', 'dist', 'worker.min.js'),
-        corePath: path.join(__dirname, 'node_modules', 'tesseract.js-core'),
-        langPath: path.join(__dirname, '.'), 
-        //logger: m => console.log(m),
+        workerPath: getResourcePath(path.join('node_modules', 'tesseract.js', 'dist', 'worker.min.js')),
+        corePath: getResourcePath(path.join('node_modules', 'tesseract.js-core')),
+        langPath: getResourcePath('.'),
         gzip: false,
         workerBlobURL: false
     });
@@ -557,12 +577,25 @@ ipcMain.handle("register", async (event, args) => {
 })
 
 
-const decipher = ({ encryptedKey, iv}) => {
-    const _iv = Buffer.from(iv, "hex")
-    const _key = Buffer.from(encryptedKey, "hex")
-    const decipher = crypto.createDecipheriv("aes-128-gcm", Buffer.from(PASSPHRASE), _iv);
-    const key = decipher.update(_key).toString("hex")
-    return key
+const decipher = ({ encryptedKey, iv} = {}) => {
+    if (!encryptedKey || !iv) {
+        console.error('decipher called with missing encryptedKey or iv', { encryptedKey, iv });
+        return null
+    }
+    if (!PASSPHRASE) {
+        console.error('decipher called but PASSPHRASE is not set')
+        return null
+    }
+    try {
+        const _iv = Buffer.from(iv, "hex")
+        const _key = Buffer.from(encryptedKey, "hex")
+        const decipher = crypto.createDecipheriv("aes-128-gcm", Buffer.from(PASSPHRASE), _iv);
+        const key = decipher.update(_key).toString("hex")
+        return key
+    } catch (e) {
+        console.error('decipher failed', e)
+        return null
+    }
 }
 
 ipcMain.handle("remove-user", async (event, user) => {
@@ -765,7 +798,12 @@ ipcMain.handle("build-for-user", async (event, args, doWait) => {
             return
         }
     }
-    build(decipher(args), args)
+    const builtKey = decipher(args)
+    if (!builtKey) {
+        console.error('build-for-user: could not obtain decrypted key for args', args)
+        return
+    }
+    build(builtKey, args)
 })
 
 ipcMain.handle("check-passphrase", async (event, args) => {

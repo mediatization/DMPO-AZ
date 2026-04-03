@@ -3,7 +3,13 @@ const { FuseV1Options, FuseVersion } = require('@electron/fuses');
 
 module.exports = {
   packagerConfig: {
-    asar: true,
+    asar: { unpack: '**/node_modules/**' },
+    name: 'DMPO',
+    executableName: 'DMPO',
+    extraResources: [
+      { from: 'Decryptor.class', to: 'Decryptor.class' },
+      { from: 'default-settings.json', to: 'default-settings.json' }
+    ]
   },
   rebuildConfig: {},
   makers: [
