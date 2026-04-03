@@ -441,11 +441,8 @@ async function performSearch(resetPage = true) {
 
   try {
     const { totalResults, images } = await queryDatabase(filters);
-
     PAGINATION_SETTINGS.totalResults = totalResults;
     PAGINATION_SETTINGS.totalPages = Math.ceil(totalResults / PAGINATION_SETTINGS.ITEMS_PER_PAGE);
-    // each time after a search on the database is completed, the application will scan it's
-    // decrypted files directory and send back a query 
     await checkForDeleted();
     await applyRender(images); 
   
@@ -457,20 +454,9 @@ async function performSearch(resetPage = true) {
 
 }
 
-// should scan the directory for any images that weren't returned by the search result
+// Scans directory for any images that weren't returned by the search result.
+// Deletes from database any that no longer exist in directory.
 async function checkForDeleted() {
-  /*
-    Ouline of function: should scan through the directory, then send set of image paths/ids to
-    database. Database will then delete entries for any images that belong to this user that no longer
-    currently exist in their directory. We are assuming that the user is only searching their data set
-    once they've already downloaded it from the database, and thus any not-existing files must've been
-    intentionally deleted from the local directory.
-  */
-
-  // search image directory with completed query results here?
-  // Recursively scan the decrypted directory (Function from imagaAnalysis.html file)
-
-  // __dirname is a global constant, I'm pretty sure.
   const databaseImgs = new Set();
   let localFiles = new Set();
   let toDelete = new Set();
@@ -513,34 +499,16 @@ async function checkForDeleted() {
     }
   }
 
-  // console.log(toDelete);
-
-  /* 
-    By this point, every file that exists within the imgDb file but not the local decrypted
-    directory should be included in the toDelete set. Have to generate an SQL query that
-    deletes the corresponding files from the imgDb file.
-
-    SQL query pseudocode
-
-    DELETE FROM Images
-    WHERE
-        imgPath in {deletePlaceholders}
-  */
-
   // checks if there are any images that need to be deleted from the database. If so, delete the relevant entries.
   if(toDelete.size > 0){
-      console.log("There is a file that needs to be deleted from the database.")
       const toDeleteArray = [...toDelete]
       const deletePlaceholders = toDeleteArray.map(() => '?').join(',');
-      console.log(toDeleteArray);
       const deleteQuery = `DELETE FROM Images WHERE imgPath in (${deletePlaceholders})`;
-      console.log("deleteQuery: %s", deleteQuery);
       await db.run(deleteQuery, toDeleteArray);
       const totalResults = await getRegisteredCount();
-      console.log("count in database after toDelete executes: %d", totalResults);
       PAGINATION_SETTINGS.totalResults = totalResults;
+      updateRegisteredCount();
   } 
-
 }
 
 async function updateRegisteredCount() {
@@ -581,8 +549,6 @@ async function initializeApp() {
     try { await loadAllUsers(); } catch (e) {}
 }
 
-// cribbed largely from imageDetail.html. if something goes wrong with it, cross reference with
-// that implementation.
 async function loadAllTags() {
     const rows = await new Promise((res, rej) => {
         db.all(`SELECT tag FROM Tags`, [], (err, rows) => err ? rej(err) : res(rows));
@@ -599,7 +565,6 @@ async function loadAllTags() {
     });
 }
 
-// based on above function
 async function loadAllUsers() {
     const rows = await new Promise((res, rej) => {
         db.all(`SELECT distinct user FROM Images`, [], (err, rows) => err ? rej(err) : res(rows));
