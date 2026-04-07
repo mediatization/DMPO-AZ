@@ -36,9 +36,10 @@ async function getImageWords(imageId) {
 }
 
 function renderMetadata(image, keywords) {
+    // this is not really readable by humans. might be worth refactoring
+    // for readability.
     const dl = document.getElementById('metaList');
     dl.innerHTML = '';
-
     function add(k, v) {
         const dt = document.createElement('dt');
         dt.textContent = k;

@@ -1,6 +1,8 @@
 // imageAnalysis-ui.js
 const { ipcRenderer } = require('electron/renderer');
 const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
+const fs = require('fs').promises;
 
 // Database setup and connection
 const db = new sqlite3.Database('imgDb');
@@ -31,6 +33,7 @@ db.serialize(() => {
         FOREIGN KEY (imgId) REFERENCES Images(id) ON DELETE CASCADE,
         FOREIGN KEY (tagId) REFERENCES Tags(id) ON DELETE CASCADE
     )`);
+    checkForDeleted();
 });
 
 // DOM Elements
@@ -40,6 +43,7 @@ const startTimeInput = document.getElementById('startTime');
 const endDateInput = document.getElementById('endDate');
 const endTimeInput = document.getElementById('endTime');
 const userInput = document.getElementById('userInput');
+const matchModeSelect = document.getElementById('matchMode');
 const keywordModeSelect = document.getElementById('keywordMode');
 const tagsInput = document.getElementById("tagsInput");
 const tagModeSelect = document.getElementById('tagMode');
@@ -70,25 +74,46 @@ async function getRegisteredCount() {
 }
 
 async function queryDatabase(filters) {
-    const { searchKeywords, searchMode, searchTags, tagMode, startDate, endDate, startTime, endTime, searchUser, page, itemsPerPage } = filters;
+    const { searchKeywords, searchMode, matchMode, searchTags, tagMode, startDate, endDate, startTime, endTime, searchUser, page, itemsPerPage } = filters;
 
     const queryParams = [];
-    let baseQuery = `SELECT DISTINCT T1.id FROM Images AS T1`;
+    let baseQuery = `SELECT DISTINCT IMGS.id FROM Images AS IMGS`;
     let joinClause = '';
     const whereClauses = [];
     
     if (searchKeywords.length > 0) {
-        joinClause = ` INNER JOIN ImageWords AS T2 ON T1.id = T2.imgId`;
+      if (matchMode === 'EXACT'){
+        // SQL query optimization prototype 
         const placeholders = searchKeywords.map(() => '?').join(',');
-        whereClauses.push(`T2.word IN (${placeholders})`);
+        const relvKeyWords = `SELECT imgId, word FROM ImageWords WHERE word IN (${placeholders})`; 
+        joinClause = ` INNER JOIN (${relvKeyWords}) AS IMWORDS ON IMGS.id = IMWORDS.imgId`;
         queryParams.push(...searchKeywords);
+      }
+      // case for matchMode === 'PARTIAL'
+      else{
+        // Prototype implementation of optimized SQL query generation
+        let str = ""
+        for(let i = 0; i < searchKeywords.length; i++){
+          let w = searchKeywords[i];
+          str += `word LIKE '%${w}%'`
+          if(i < searchKeywords.length - 1){
+            str += ` OR `
+          }
+        }
+
+        const relvKeyWords = `SELECT imgId, word FROM ImageWords WHERE ${str}`; 
+        joinClause = ` INNER JOIN (${relvKeyWords}) AS IMWORDS ON IMGS.id = IMWORDS.imgId`;
+        
+      }
+
     }
 
     if (searchTags.length > 0) {
-        joinClause += ` INNER JOIN ImageTags as T3 on T1.id = T3.imgid`;
-        joinClause += ` INNER JOIN Tags as T4 on T3.tagId = T4.id`;
+        // Prototype for searching by Tag Optimization
         const tagPlaceholders = searchTags.map(() => '?').join(',');
-        whereClauses.push(`T4.tag IN (${tagPlaceholders})`);
+        joinClause += ` INNER JOIN ImageTags as IMTAGS on IMGS.id = IMTAGS.imgid`;
+        const relvTags = `SELECT id, tag FROM Tags WHERE tag IN (${tagPlaceholders})`;
+        joinClause += ` INNER JOIN (${relvTags}) as TAGS on IMTAGS.tagId = TAGS.id`;
         queryParams.push(...searchTags);
     }
 
@@ -98,10 +123,10 @@ async function queryDatabase(filters) {
         if (startTime) s += ' ' + startTime;
         else s += ' 00:00:00';
         
-        whereClauses.push(`datetime(T1.date, 'localtime') >= ?`);
+        whereClauses.push(`datetime(IMGS.date, 'localtime') >= ?`);
         queryParams.push(s);
     } else if (startTime) {
-        whereClauses.push(`strftime('%H:%M:%S', T1.date, 'localtime') >= ?`);
+        whereClauses.push(`strftime('%H:%M:%S', IMGS.date, 'localtime') >= ?`);
         queryParams.push(startTime);
     }
 
@@ -111,15 +136,15 @@ async function queryDatabase(filters) {
         if (endTime) e += ' ' + endTime;
         else e += ' 23:59:59';
         
-        whereClauses.push(`datetime(T1.date, 'localtime') <= ?`);
+        whereClauses.push(`datetime(IMGS.date, 'localtime') <= ?`);
         queryParams.push(e);
     } else if (endTime) {
-        whereClauses.push(`strftime('%H:%M:%S', T1.date, 'localtime') <= ?`);
+        whereClauses.push(`strftime('%H:%M:%S', IMGS.date, 'localtime') <= ?`);
         queryParams.push(endTime);
     }
 
     if (searchUser) {
-        whereClauses.push(`T1.user LIKE ?`);
+        whereClauses.push(`IMGS.user LIKE ?`);
         queryParams.push(`%${searchUser}%`);
     }
     
@@ -127,22 +152,22 @@ async function queryDatabase(filters) {
     let groupByString = '';
     
     if (searchKeywords.length > 0) {
-        groupByString = ` GROUP BY T1.id`;
+        groupByString = ` GROUP BY IMGS.id`;
         if (searchMode === 'AND') {
-            groupByString += ` HAVING COUNT(DISTINCT T2.word) = ?`;
+            groupByString += ` HAVING COUNT(DISTINCT IMWORDS.word) = ?`;
             queryParams.push(searchKeywords.length);
         }
     }
     if (searchTags.length > 0) {
         if (groupByString === '') {
-            groupByString = ` GROUP BY T1.id`;
+            groupByString = ` GROUP BY IMGS.id`;
             if (tagMode === 'AND') {
-                groupByString += ` HAVING COUNT(DISTINCT T4.tag) = ?`;
+                groupByString += ` HAVING COUNT(DISTINCT TAGS.tag) = ?`;
                 queryParams.push(searchTags.length);
             }
         }
         else if (tagMode === 'AND') {
-            groupByString += ` AND COUNT(DISTINCT T4.tag) = ?`;
+            groupByString += ` AND COUNT(DISTINCT TAGS.tag) = ?`;
             queryParams.push(searchTags.length);
         }
     }
@@ -160,7 +185,7 @@ async function queryDatabase(filters) {
     }
     
     const offset = (page - 1) * itemsPerPage;
-    const pagedIdQuery = idQuery + ` ORDER BY T1.date DESC, T1.id DESC LIMIT ? OFFSET ?`;
+    const pagedIdQuery = idQuery + ` ORDER BY IMGS.date ASC, IMGS.id ASC LIMIT ? OFFSET ?`;
     const idRows = await new Promise((res, rej) => {
             db.all(pagedIdQuery, [...queryParams, itemsPerPage, offset], (err, rows) => err ? rej(err) : res(rows));
     });
@@ -175,7 +200,7 @@ async function queryDatabase(filters) {
         SELECT id, imgPath, date, user
         FROM Images 
         WHERE id IN (${idPlaceholders})
-        ORDER BY date DESC, id DESC`;
+        ORDER BY date ASC, id ASC`;
     
     const images = await new Promise((res, rej) => {
         db.all(dataQuery, ids, (err, rows) => err ? rej(err) : res(rows));
@@ -384,6 +409,7 @@ async function performSearch(resetPage = true) {
   const searchKeywordsStr = keywordsInput.value.toLowerCase().trim();
   const searchKeywords = searchKeywordsStr ? searchKeywordsStr.split(/[\s,]+/).filter(k => k.length > 0) : [];
   const searchMode = keywordModeSelect.value;
+  const matchMode = matchModeSelect.value;
   
   const searchTagsStr = tagsInput.value.toLowerCase().trim();
   const searchTags = searchTagsStr ? searchTagsStr.split(/[\s,]+/).filter(t => t.length > 0) : [];
@@ -399,6 +425,7 @@ async function performSearch(resetPage = true) {
   const filters = {
     searchKeywords,
     searchMode,
+    matchMode,
     searchTags,
     tagMode,
     startDate, 
@@ -412,19 +439,77 @@ async function performSearch(resetPage = true) {
 
   try {
     const { totalResults, images } = await queryDatabase(filters);
-
     PAGINATION_SETTINGS.totalResults = totalResults;
     PAGINATION_SETTINGS.totalPages = Math.ceil(totalResults / PAGINATION_SETTINGS.ITEMS_PER_PAGE);
-    
+    await checkForDeleted();
     await applyRender(images); 
   
   } catch (err) {
     console.error('Error performing search:', err);
     imageTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:red;">An error occurred during search.</td></tr>';
   }
+
+
+}
+
+// Scans directory for any images that weren't returned by the search result.
+// Deletes from database any that no longer exist in directory.
+async function checkForDeleted() {
+  const databaseImgs = new Set();
+  let localFiles = new Set();
+  let toDelete = new Set();
+  const decryptedPath = path.join(__dirname, '../decrypted');
+
+  async function scanDirectory(dirPath) {
+    try {
+        const items = await fs.readdir(dirPath);
+        for (const item of items) {
+            const fullPath = path.join(dirPath, item);
+            const stat = await fs.stat(fullPath);
+                        
+            if (stat.isDirectory()) {
+                await scanDirectory(fullPath);
+            } else {
+                localFiles.add(fullPath);
+            }
+          }
+        } catch (error) {
+            console.log('Error reading directory:', error.message);
+        }
+  }
+
+  await scanDirectory(decryptedPath);
+
+  // Get all paths already in the DB
+  await new Promise((resolve, reject) => {
+      db.each("SELECT imgPath FROM Images", (err, row) => {
+      if (err) return reject(err);
+      databaseImgs.add(row.imgPath);
+    }, (err, count) => err ? reject(err) : resolve(count));
+  });
+
+  // loops through all of the files currently in the imgDb file, and if it doesn't exist
+  // in the decrypted files folder, prints out that filepath
+  for (const file of databaseImgs){
+    if(!localFiles.has(file)){
+      toDelete.add(file);
+    }
+  }
+
+  // checks if there are any images that need to be deleted from the database. If so, delete the relevant entries.
+  if(toDelete.size > 0){
+      const toDeleteArray = [...toDelete]
+      const deletePlaceholders = toDeleteArray.map(() => '?').join(',');
+      const deleteQuery = `DELETE FROM Images WHERE imgPath in (${deletePlaceholders})`;
+      await db.run(deleteQuery, toDeleteArray);
+      const totalResults = await getRegisteredCount();
+      PAGINATION_SETTINGS.totalResults = totalResults;
+      updateRegisteredCount();
+  } 
 }
 
 async function updateRegisteredCount() {
+  
     try {
         const count = await getRegisteredCount();
         registeredCountEl.textContent = count;
@@ -456,6 +541,40 @@ async function initializeApp() {
     
     await updateRegisteredCount();
     performSearch(true);
+    try { await loadAllTags(); } catch (e) {}
+    try { await loadAllUsers(); } catch (e) {}
+}
+
+async function loadAllTags() {
+    const rows = await new Promise((res, rej) => {
+        db.all(`SELECT tag FROM Tags`, [], (err, rows) => err ? rej(err) : res(rows));
+    });
+
+    const tags = rows.map(r => r.tag);
+    const list = document.getElementById('tagsList');
+    list.innerHTML = '';
+
+    tags.sort().forEach(tag => {
+        const opt = document.createElement('option');
+        opt.value = tag;
+        list.appendChild(opt);
+    });
+}
+
+async function loadAllUsers() {
+    const rows = await new Promise((res, rej) => {
+        db.all(`SELECT distinct user FROM Images`, [], (err, rows) => err ? rej(err) : res(rows));
+    });
+
+    const users = rows.map(r => r.user);
+    const list = document.getElementById('usersList');
+    list.innerHTML = '';
+
+    users.sort().forEach(user => {
+        const opt = document.createElement('option');
+        opt.value = user;
+        list.appendChild(opt);
+    });
 }
 
 // Event Listeners
@@ -479,6 +598,9 @@ if (searchBtn) searchBtn.addEventListener('click', () => {
     }
   });
 });
+
+loadAllTags().catch(err => console.error('Could not load tag list:', err));
+loadAllUsers().catch(err => console.error('Could not load user list:', err));
 
 // Initialize
 initializeApp();
