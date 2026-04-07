@@ -2,6 +2,7 @@
 const { ipcRenderer } = require('electron/renderer');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const fs = require('fs').promises;
 
 // Database setup and connection
 const db = new sqlite3.Database('imgDb');
@@ -32,6 +33,7 @@ db.serialize(() => {
         FOREIGN KEY (imgId) REFERENCES Images(id) ON DELETE CASCADE,
         FOREIGN KEY (tagId) REFERENCES Tags(id) ON DELETE CASCADE
     )`);
+    checkForDeleted();
 });
 
 // DOM Elements
@@ -437,19 +439,77 @@ async function performSearch(resetPage = true) {
 
   try {
     const { totalResults, images } = await queryDatabase(filters);
-
     PAGINATION_SETTINGS.totalResults = totalResults;
     PAGINATION_SETTINGS.totalPages = Math.ceil(totalResults / PAGINATION_SETTINGS.ITEMS_PER_PAGE);
-    
+    await checkForDeleted();
     await applyRender(images); 
   
   } catch (err) {
     console.error('Error performing search:', err);
     imageTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:red;">An error occurred during search.</td></tr>';
   }
+
+
+}
+
+// Scans directory for any images that weren't returned by the search result.
+// Deletes from database any that no longer exist in directory.
+async function checkForDeleted() {
+  const databaseImgs = new Set();
+  let localFiles = new Set();
+  let toDelete = new Set();
+  const decryptedPath = path.join(__dirname, '../decrypted');
+
+  async function scanDirectory(dirPath) {
+    try {
+        const items = await fs.readdir(dirPath);
+        for (const item of items) {
+            const fullPath = path.join(dirPath, item);
+            const stat = await fs.stat(fullPath);
+                        
+            if (stat.isDirectory()) {
+                await scanDirectory(fullPath);
+            } else {
+                localFiles.add(fullPath);
+            }
+          }
+        } catch (error) {
+            console.log('Error reading directory:', error.message);
+        }
+  }
+
+  await scanDirectory(decryptedPath);
+
+  // Get all paths already in the DB
+  await new Promise((resolve, reject) => {
+      db.each("SELECT imgPath FROM Images", (err, row) => {
+      if (err) return reject(err);
+      databaseImgs.add(row.imgPath);
+    }, (err, count) => err ? reject(err) : resolve(count));
+  });
+
+  // loops through all of the files currently in the imgDb file, and if it doesn't exist
+  // in the decrypted files folder, prints out that filepath
+  for (const file of databaseImgs){
+    if(!localFiles.has(file)){
+      toDelete.add(file);
+    }
+  }
+
+  // checks if there are any images that need to be deleted from the database. If so, delete the relevant entries.
+  if(toDelete.size > 0){
+      const toDeleteArray = [...toDelete]
+      const deletePlaceholders = toDeleteArray.map(() => '?').join(',');
+      const deleteQuery = `DELETE FROM Images WHERE imgPath in (${deletePlaceholders})`;
+      await db.run(deleteQuery, toDeleteArray);
+      const totalResults = await getRegisteredCount();
+      PAGINATION_SETTINGS.totalResults = totalResults;
+      updateRegisteredCount();
+  } 
 }
 
 async function updateRegisteredCount() {
+  
     try {
         const count = await getRegisteredCount();
         registeredCountEl.textContent = count;
@@ -485,8 +545,6 @@ async function initializeApp() {
     try { await loadAllUsers(); } catch (e) {}
 }
 
-// cribbed largely from imageDetail.html. if something goes wrong with it, cross reference with
-// that implementation.
 async function loadAllTags() {
     const rows = await new Promise((res, rej) => {
         db.all(`SELECT tag FROM Tags`, [], (err, rows) => err ? rej(err) : res(rows));
@@ -503,7 +561,6 @@ async function loadAllTags() {
     });
 }
 
-// based on above function
 async function loadAllUsers() {
     const rows = await new Promise((res, rej) => {
         db.all(`SELECT distinct user FROM Images`, [], (err, rows) => err ? rej(err) : res(rows));
