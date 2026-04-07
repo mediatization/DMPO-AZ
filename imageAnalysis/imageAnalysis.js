@@ -1,7 +1,6 @@
 // imageAnalysis-ui.js
 const { ipcRenderer } = require('electron/renderer');
 const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
 
 // Database setup and connection
 const db = new sqlite3.Database('imgDb');

@@ -13,6 +13,7 @@ const spawn = require("child_process").spawn;
 const QRCode = require("qrcode");
 const { exec } = require('child_process');
 const path = require('path');
+// const sqlite3 = require('sqlite3').verbose();
 
 const getResourcePath = (relPath) => {
     return app.isPackaged ? path.join(process.resourcesPath, relPath) : path.join(__dirname, relPath);
@@ -26,6 +27,19 @@ if (require('electron-squirrel-startup')) {
 let decryptionQueue = []
 
 const downloader = new Downloader()
+
+
+// const settings = new sqlite3.Database('settings');
+
+
+// settings.serialize(() => {
+//     settings.run(`CREATE TABLE IF NOT EXISTS Settings (
+//             Setting TEXT PRIMARY KEY,
+//             Value TEXT)`);
+
+//     settings.each
+
+// })
 
 let settings = {}
 const settingsPath = getResourcePath('default-settings.json')
