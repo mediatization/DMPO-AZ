@@ -202,8 +202,6 @@ async function queryDatabase(filters) {
         WHERE id IN (${idPlaceholders})
         ORDER BY date ASC, id ASC`;
     
-    console.log("Query database map item example: ");
-    console.log(idPlaceholders);
     const images = await new Promise((res, rej) => {
         db.all(dataQuery, ids, (err, rows) => err ? rej(err) : res(rows));
     });
@@ -494,7 +492,6 @@ async function checkForDeleted() {
   // in the decrypted files folder, prints out that filepath
   for (const file of databaseImgs){
     if(!localFiles.has(file)){
-      console.log(file);
       toDelete.add(file);
     }
   }
@@ -514,7 +511,6 @@ async function checkForDeleted() {
 async function updateRegisteredCount() {
   
     try {
-        console.log("Entered updateRegisteredCount!");
         const count = await getRegisteredCount();
         registeredCountEl.textContent = count;
     } catch (e) {
