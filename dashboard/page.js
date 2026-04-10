@@ -9,6 +9,11 @@ let enforceSecurityCleanup = false;
 // central status notification management (replaces download-notif)
 let statusNotifTimeout = null
 function setStatusNotif(text, duration = 3000) {
+    /*
+        DEBUG COMMENT
+        I think this is where the timeout notification is handled. Need to figure out where the
+        signal for handling the pop-up window is being sent out.
+    */
     const el = document.getElementById("status-notif")
     if (!el) return
     el.innerText = String(text || '')

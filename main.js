@@ -992,8 +992,13 @@ const setPassphrase = async (event, args) => {
     return true;
 }
 
+/* DEBUG COMMENT
+   Here is this value that can be altered in order to change the paeriod of time
+   that is used to create the countdown for the timeout timer.
+*/
 
-let countdownDuration = 20 * 60; // 20 minutes in seconds
+// let countdownDuration = 20 * 60; // 20 minutes in seconds
+let countdownDuration =  60; // setting the countdown to sixty seconds to testing purposes 
 let remainingTime = countdownDuration;
 let timerInterval = null;
 
@@ -1005,6 +1010,12 @@ ipcMain.handle("reset-timer", (event, args) =>{
     win.webContents.send("updateDisplay", {remainingTime: remainingTime})
 })
 
+
+/*
+    This is where the event is sent out for the timeout interval hitting zero.
+    Get to the bottom of how this relates to the pop-up window for the password,
+    and I think we'll be golden?
+*/
 function startTimer() {
   if (timerInterval) return; // Prevent multiple intervals
 
