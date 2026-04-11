@@ -303,6 +303,9 @@ async function applyRender(pageImages) {
       img.alt = `${image.filename} thumbnail`;
       img.src = 'file://' + image.thumbnail;
       img.addEventListener('click', () => {
+        // debug: this is where the event handler for each image is handled
+        // note for later: figure out why it double invokes the password screens
+        ipcRenderer.invoke("external-password-check");
         ipcRenderer.invoke("open-image-detail", image.id);
       });
       thumbCell.appendChild(img);

@@ -487,7 +487,24 @@ ipcMain.handle("open-image-detail", async (event, args) => {
     win1.menuBarVisible = false;
 })
 
+ipcMain.handle("external-password-check", async (event, args) => {
+    // test function for waiting externally checking to see if the password timer has run out
+    const res = await waitForPassphrase()
+    if(!res)
+        return
+})
+
 ipcMain.handle("open-image-analysis", async (event, args) => {
+
+    /*
+        DEBUG:
+        waitForPassphrase is what checks to see whether or not the timer has zeroed out.
+        When that occurs, isreset will be set to false, and it opens the password window
+        and handles it.
+    
+        What we should do is make it so that the image analysis calls the waitForPassphrase function.
+    */
+
     const res = await waitForPassphrase()
     if (!res)
         return
@@ -1002,7 +1019,12 @@ let countdownDuration =  60; // setting the countdown to sixty seconds to testin
 let remainingTime = countdownDuration;
 let timerInterval = null;
 
-ipcMain.handle("reset-timer", (event, args) =>{
+ipcMain.handle("reset-timer", async (event, args) =>{
+    
+    const res = await waitForPassphrase()
+    if (!res)
+        return
+
     clearInterval(timerInterval)
     timerInterval = null
     remainingTime = countdownDuration
