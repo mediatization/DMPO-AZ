@@ -1,9 +1,0 @@
-{
-  "javaPath": "JAVA_PATH",
-  "accountName": "ACCOUNT_NAME",
-  "accountUrl": "ACCOUNT_URL",
-  "accountKey": "ACCOUNT_KEY",
-  "uploadAddress": "UPLOAD_ADDRESS",
-  "appFolder": "APP_FOLDER",
-  "enforceSecurityCleanup": false
-}

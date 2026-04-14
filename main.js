@@ -28,44 +28,13 @@ let decryptionQueue = []
 
 const downloader = new Downloader()
 
-
-// const settings = new sqlite3.Database('settings');
-
-
-// settings.serialize(() => {
-//     settings.run(`CREATE TABLE IF NOT EXISTS Settings (
-//             Setting TEXT PRIMARY KEY,
-//             Value TEXT)`);
-
-//     settings.each
-
-// })
-
-let settings = {}
-const settingsPath = getResourcePath('default-settings.json')
-if (fs.existsSync(settingsPath)) {
-    settings = JSON.parse(fs.readFileSync(settingsPath))
-}
-console.log(settings);
+// Settings DB helper
+const Settings = require('./settings-db');
 
 let PASSPHRASE = "16charpassphrase" // MUST BE 16 CHARACTERS
-const AZURE_ACC_NAME = settings.accountName
-const AZURE_ACC_URL = settings.accountUrl
-const AZURE_ACC_KEY = settings.accountKey
 
-// Create the BlobServiceClient object with connection string, but guard against missing config
+// Create the BlobServiceClient object with connection string later after settings init
 let blobServiceClient = null
-if (AZURE_ACC_NAME && AZURE_ACC_URL && AZURE_ACC_KEY) {
-    try {
-        const credential = new Storage.StorageSharedKeyCredential(AZURE_ACC_NAME, AZURE_ACC_KEY)
-        blobServiceClient = new Storage.BlobServiceClient(AZURE_ACC_URL, credential);
-    } catch (e) {
-        console.error('Failed to create Azure BlobServiceClient', e)
-        blobServiceClient = null
-    }
-} else {
-    console.warn('Azure storage not configured (missing accountName/accountUrl/accountKey). Azure features will be disabled until configured.')
-}
 
 
 let data = [];
@@ -94,7 +63,28 @@ function createWindow() {
     win.setMenu(null)
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(async () => {
+    // initialize settings DB
+    await Settings.init();
+
+    // initialize Azure blob client if configured
+    const AZURE_ACC_NAME = Settings.get('accountName');
+    const AZURE_ACC_URL = Settings.get('accountUrl');
+    const AZURE_ACC_KEY = Settings.get('accountKey');
+    if (AZURE_ACC_NAME && AZURE_ACC_URL && AZURE_ACC_KEY) {
+        try {
+            const credential = new Storage.StorageSharedKeyCredential(AZURE_ACC_NAME, AZURE_ACC_KEY)
+            blobServiceClient = new Storage.BlobServiceClient(AZURE_ACC_URL, credential);
+        } catch (e) {
+            console.error('Failed to create Azure BlobServiceClient', e)
+            blobServiceClient = null
+        }
+    } else {
+        console.warn('Azure storage not configured (missing accountName/accountUrl/accountKey). Azure features will be disabled until configured.')
+    }
+
+    createWindow();
+});
 
 
 app.on("window-all-closed", () => {
@@ -233,9 +223,6 @@ ipcMain.handle("fetch-data", async (event, args) => {
     }
     
     data = await updateLocalFiles(data)
-
-    event.sender.send("update-security-settings", { enforceSecurityCleanup: !!settings.enforceSecurityCleanup });
-   
     event.sender.send("update-data", data)
     return data
 });
@@ -327,18 +314,6 @@ const isOnline = async () => {
 }
 
 ipcMain.handle("decrypt-for-user", async (event, args) => {
-    // Don't allow decrypt while online
-    if (settings.enforceSecurityCleanup) {
-        try {
-            await checkInternetConnected()
-            dialog.showErrorBox("Online Error", "Cannot decrypt while connected to the internet")
-            decryptionQueue = []
-            return;
-        } catch (e) {
-            // offline -> proceed
-        }
-    }
-
     // Queue the decryption request and process sequentially
     decryptionQueue.push([event, args])
     if (decryptionQueue.length === 1) {
@@ -353,7 +328,7 @@ const decrypt = async (event, args) => {
         return
 
     const key = decipher({encryptedKey: args.encryptedKey, iv: args.iv})
-    const javaPath = settings.javaPath || "java.exe"
+    const javaPath = Settings.get('javaPath') || "java.exe"
     const decryptorPath = getResourcePath('Decryptor.class')
 
     console.log("Args: ")
@@ -465,39 +440,15 @@ ipcMain.handle("open-decrypted", async (event, args) => {
     return null
 })
 
-// Clear out decrypted folder contents on quit/crash so decrypted files only persist while app is open
-const cleanupEphemeral = () => {
-    try {
-        const base = resolve('./decrypted/')
-        if (!fs.existsSync(base)) return
-        fs.readdirSync(base, { withFileTypes: true }).forEach(d => {
-            if (d.isDirectory()) {
-                const p = resolve(base, d.name)
-                try { fs.rmdirSync(p, { recursive: true }) } catch (e) {}
-            }
-        })
-    } catch (e) {
-        console.error('cleanupEphemeral error', e)
-    }
-}
-
 app.on('before-quit', () => {
-    if (settings.enforceSecurityCleanup) {
-        cleanupEphemeral()
-    }
+    // no-op
 })
 
 process.on('SIGINT', () => { 
-    if (settings.enforceSecurityCleanup) {
-        cleanupEphemeral(); 
-    }
     process.exit(0) 
 })
 process.on('uncaughtException', (err) => { 
     console.error('uncaughtException', err); 
-    if (settings.enforceSecurityCleanup) {
-        cleanupEphemeral(); 
-    }
     process.exit(1) 
 })
 
@@ -551,6 +502,62 @@ ipcMain.handle("open-onboard-window", async (event, args) => {
     });
     win1.loadFile("onboarding/onboarding.html");
     win1.menuBarVisible = false;
+})
+
+ipcMain.handle("open-settings", async (event, args) => {
+    const res = await waitForPassphrase()
+    if (!res)
+        return
+    
+    win1 = new BrowserWindow({
+        width: 600,
+        height: 700,
+        webPreferences: {
+            nodeIntegration: true,
+            contextIsolation: false
+        },
+    });
+    win1.loadFile("settings/settings.html");
+    win1.menuBarVisible = false;
+})
+
+ipcMain.handle('get-settings', async () => {
+    try {
+        return Settings.getAll();
+    } catch (e) {
+        console.error('get-settings failed', e)
+        return {}
+    }
+})
+
+ipcMain.handle('save-settings', async (event, obj) => {
+    try {
+        const keys = Object.keys(obj || {})
+        for (const k of keys) {
+            await Settings.set(k, obj[k])
+        }
+
+        // Re-init Azure client if credentials changed
+        const AZURE_ACC_NAME = Settings.get('accountName');
+        const AZURE_ACC_URL = Settings.get('accountUrl');
+        const AZURE_ACC_KEY = Settings.get('accountKey');
+        if (AZURE_ACC_NAME && AZURE_ACC_URL && AZURE_ACC_KEY) {
+            try {
+                const credential = new Storage.StorageSharedKeyCredential(AZURE_ACC_NAME, AZURE_ACC_KEY)
+                blobServiceClient = new Storage.BlobServiceClient(AZURE_ACC_URL, credential);
+            } catch (e) {
+                console.error('Failed to create Azure BlobServiceClient', e)
+                blobServiceClient = null
+            }
+        } else {
+            blobServiceClient = null
+        }
+
+        return true
+    } catch (e) {
+        console.error('save-settings failed', e)
+        throw e
+    }
 })
  
 ipcMain.handle("register", async (event, args) => {
@@ -680,7 +687,7 @@ const build = (key, args) =>
 
     dmpoPath = __dirname
     // Path for App folder (root folder, not subfolder)
-    appPath = settings.appFolder
+    appPath = Settings.get('appFolder')
         if (!fs.existsSync(appPath)) {
         console.log("ERROR: failed to find path %s for app folder", appPath)
         win.webContents.send("update-status", { message: "ALERT: Build Failed", duration: 5000 })
@@ -707,7 +714,7 @@ const build = (key, args) =>
         win.webContents.send("update-status", { message: "ALERT: Build Failed", duration: 5000 })
         return
     }
-    fs.writeFile(constantsPath, constants(settings.uploadAddress, key, args.hashedKey, args.name), (err) => {
+    fs.writeFile(constantsPath, constants(Settings.get('uploadAddress'), key, args.hashedKey, args.name), (err) => {
         if (err) {
             console.error('Error occurred writing new values to Constants.java:', err);
             win.webContents.send("update-status", { message: "ALERT: Build Failed", duration: 5000 })

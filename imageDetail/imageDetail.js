@@ -1,6 +1,6 @@
 // imageDetail/imageDetail.js
 const sqlite3 = require('sqlite3').verbose();
-const db = new sqlite3.Database('imgDb');
+const db = new sqlite3.Database('img.db');
 
 // Helper functions
 function qs(name) {

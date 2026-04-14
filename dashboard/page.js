@@ -4,7 +4,6 @@ const { ipcRenderer } = require('electron/renderer');
 
 let data = [];
 
-let enforceSecurityCleanup = false;
 
 // central status notification management (replaces download-notif)
 let statusNotifTimeout = null
@@ -34,16 +33,16 @@ function main() {
     document.getElementById("image-analysis").onclick = () => {
         ipcRenderer.invoke("open-image-analysis" )
     }    
+    document.getElementById("settings-button").onclick = () => {
+        ipcRenderer.invoke("open-settings")
+    }
     document.getElementById("onboard-button").style.display = "block";
 
     const ob = document.getElementById("onboard-button");
-    if (ob) ob.classList.add('default-muted');
+    // if (ob) ob.classList.add('default-muted');
     const ia = document.getElementById("image-analysis");
-    if (ia) ia.classList.add('default-muted');
+    // if (ia) ia.classList.add('default-muted');
 
-    ipcRenderer.on("update-security-settings", (e, args) => { 
-        enforceSecurityCleanup = args.enforceSecurityCleanup;
-    });
 
 
     ipcRenderer.on("update-data", (e, args) => { 
@@ -113,21 +112,6 @@ function main() {
     ipcRenderer.on("updateDisplay", (e,args) => {
         document.getElementById("timer-display").textContent = formatTime(args.remainingTime);
     })
-
-    setInterval(() => { 
-        electron.ipcRenderer.invoke("is-online")
-        .then(online => {
-            if (enforceSecurityCleanup && online && data.some(d => (d.decryptedCount && d.decryptedCount != 0) || (d.cleanedAutomatedCount && d.cleanedAutomatedCount != 0))) {
-                document.getElementById("online-warning").innerText = "WARNING: Decrypted images detected while online"
-                document.getElementById("online-warning").style.display = "inline-block"
-                document.getElementById("decrypt-all-button").style.display = "none"
-            } else {
-                document.getElementById("online-warning").innerText = ""
-                document.getElementById("online-warning").style.display = "none"
-                document.getElementById("decrypt-all-button").style.display = "inline-block"
-            }
-        }) 
-    }, 5000)
 }
 
 

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html style="height:100%">
+<head>
+  <meta charset="UTF-8" />
+  <title>Settings</title>
+  <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline';" />
+  <style>
+    body { font-family: system-ui; padding: 16px }
+    label { display:block; margin-top:8px }
+    input[type=text], input[type=password] { width: 100%; padding:6px }
+    .row { display:flex; gap:8px; align-items:center }
+    .actions { margin-top:12px }
+  </style>
+</head>
+<body>
+  <h2>Settings</h2>
+  <div>
+    <label>Azure Account Name</label>
+    <input id="accountName" type="text" />
+
+    <label>Azure Account URL</label>
+    <input id="accountUrl" type="text" />
+
+    <label>Azure Account Key</label>
+    <input id="accountKey" type="text" />
+
+    <label>Upload Address</label>
+    <input id="uploadAddress" type="text" />
+
+    <label>App Folder Path</label>
+    <input id="appFolder" type="text" />
+
+    <label>Java Path</label>
+    <input id="javaPath" type="text" />
+
+
+
+    <div class="actions">
+      <button id="save">Save</button>
+      <button id="close">Close</button>
+      <span id="status" style="margin-left:12px"></span>
+    </div>
+  </div>
+  <script src="./settings.js"></script>
+</body>
+</html>

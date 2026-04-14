@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs').promises;
 
 // Database setup and connection
-const db = new sqlite3.Database('imgDb');
+const db = new sqlite3.Database('img.db');
 
 // Initialize database tables
 db.serialize(() => {
@@ -488,7 +488,7 @@ async function checkForDeleted() {
     }, (err, count) => err ? reject(err) : resolve(count));
   });
 
-  // loops through all of the files currently in the imgDb file, and if it doesn't exist
+  // loops through all of the files currently in the img.db file, and if it doesn't exist
   // in the decrypted files folder, prints out that filepath
   for (const file of databaseImgs){
     if(!localFiles.has(file)){
