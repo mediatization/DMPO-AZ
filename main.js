@@ -488,10 +488,10 @@ ipcMain.handle("open-image-detail", async (event, args) => {
 })
 
 ipcMain.handle("external-password-check", async (event, args) => {
-    // test function for waiting externally checking to see if the password timer has run out
     const res = await waitForPassphrase()
-    if(!res)
-        return
+    if (!res)
+        return false
+    return true
 })
 
 ipcMain.handle("open-image-analysis", async (event, args) => {
@@ -901,6 +901,16 @@ const loadPassphrase = async () =>
             resolve("")
         }
     })
+}
+
+// Function to call waiting for password, mostly so that code does not have to be reused across event handlers
+const checkPassphrase = async () => {
+    // test function for waiting externally checking to see if the password timer has run out
+    const res = await waitForPassphrase()
+    if(!res)
+        return false
+    else
+        return true
 }
 
 // Compute a simple integrity signature (sha256 of the password_hash contents)
