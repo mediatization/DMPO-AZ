@@ -130,7 +130,6 @@ screenomics-sutd*.json
 settings.json
 bucket_key.json
 password_hash
-default-settings.json
 ._*
 password_hash.meta
 *.db

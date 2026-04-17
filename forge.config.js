@@ -8,7 +8,6 @@ module.exports = {
     executableName: 'DMPO',
     extraResources: [
       { from: 'Decryptor.class', to: 'Decryptor.class' },
-      { from: 'default-settings.json', to: 'default-settings.json' }
     ]
   },
   rebuildConfig: {},
