@@ -496,18 +496,11 @@ ipcMain.handle("external-password-check", async (event, args) => {
 
 ipcMain.handle("open-image-analysis", async (event, args) => {
 
-    /*
-        DEBUG:
-        waitForPassphrase is what checks to see whether or not the timer has zeroed out.
-        When that occurs, isreset will be set to false, and it opens the password window
-        and handles it.
-    
-        What we should do is make it so that the image analysis calls the waitForPassphrase function.
-    */
-
+    // This triggers the password prompt, should the timer run out 
     const res = await waitForPassphrase()
     if (!res)
         return
+    
     win1 = new BrowserWindow({
         width: 800,
         height: 800,
@@ -873,7 +866,7 @@ const waitForPassphrase = async () => {
             console.log("Called passphrase-correct")
             returned = true
             win2.close()
-            startTimer()
+            resetTimer(event, args)
             resolve(true)
         });
 
@@ -1019,13 +1012,7 @@ const setPassphrase = async (event, args) => {
     return true;
 }
 
-/* DEBUG COMMENT
-   Here is this value that can be altered in order to change the paeriod of time
-   that is used to create the countdown for the timeout timer.
-*/
-
-// let countdownDuration = 20 * 60; // 20 minutes in seconds
-let countdownDuration =  60; // setting the countdown to sixty seconds to testing purposes 
+let countdownDuration = 20 * 60; // 20 minutes in seconds
 let remainingTime = countdownDuration;
 let timerInterval = null;
 
@@ -1035,19 +1022,17 @@ ipcMain.handle("reset-timer", async (event, args) =>{
     if (!res)
         return
 
+    resetTimer(event, args)
+})
+
+async function resetTimer(event, args) {
     clearInterval(timerInterval)
     timerInterval = null
     remainingTime = countdownDuration
     startTimer() // Restart the timer immediately after resetting
     win.webContents.send("updateDisplay", {remainingTime: remainingTime})
-})
+}
 
-
-/*
-    This is where the event is sent out for the timeout interval hitting zero.
-    Get to the bottom of how this relates to the pop-up window for the password,
-    and I think we'll be golden?
-*/
 function startTimer() {
   if (timerInterval) return; // Prevent multiple intervals
 

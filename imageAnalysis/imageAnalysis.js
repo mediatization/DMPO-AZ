@@ -303,9 +303,6 @@ async function applyRender(pageImages) {
       img.alt = `${image.filename} thumbnail`;
       img.src = 'file://' + image.thumbnail;
       img.addEventListener('click', () => {
-        // debug: this is where the event handler for each image is handled
-        // note for later: figure out why it double invokes the password screens
-        // ipcRenderer.invoke("external-password-check");
         ipcRenderer.invoke("open-image-detail", image.id);
       });
       thumbCell.appendChild(img);
@@ -488,8 +485,6 @@ async function initializeApp() {
     try { await loadAllUsers(); } catch (e) {}
 }
 
-// cribbed largely from imageDetail.html. if something goes wrong with it, cross reference with
-// that implementation.
 async function loadAllTags() {
     const rows = await new Promise((res, rej) => {
         db.all(`SELECT tag FROM Tags`, [], (err, rows) => err ? rej(err) : res(rows));
