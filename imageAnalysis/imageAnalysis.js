@@ -584,15 +584,26 @@ clearFiltersBtn.addEventListener('click', () => {
 });
 
 const searchBtn = document.getElementById('searchBtn');
-if (searchBtn) searchBtn.addEventListener('click', () => {
+if (searchBtn) searchBtn.addEventListener('click', async () => {
+  const res = await ipcRenderer.invoke("external-password-check");
+      if(res == false){
+        console.log("Did not read a result from the evoke to password check")
+        return;
+      }
   performSearch(true);
 });
 
 ['keywordsInput', 'tagsInput', 'startDate', 'endDate', 'userInput', 'startTime', 'endTime'].forEach(id => {
   const el = document.getElementById(id);
   if (!el) return;
-  el.addEventListener('keydown', (e) => {
+  el.addEventListener('keydown', async (e) => {
     if (e.key === 'Enter') {
+      const res = await ipcRenderer.invoke("external-password-check");
+      if(res == false){
+        console.log("Did not read a result from the evoke to password check")
+        return;
+      }
+      console.log("Did read a result from the evoke to password check");
       e.preventDefault();
       performSearch(true);
     }

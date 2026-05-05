@@ -472,10 +472,20 @@ ipcMain.handle("open-image-detail", async (event, args) => {
     win1.menuBarVisible = false;
 })
 
+ipcMain.handle("external-password-check", async (event, args) => {
+    const res = await waitForPassphrase()
+    if (!res)
+        return false
+    return true
+})
+
 ipcMain.handle("open-image-analysis", async (event, args) => {
+
+    // This triggers the password prompt, should the timer run out 
     const res = await waitForPassphrase()
     if (!res)
         return
+    
     win1 = new BrowserWindow({
         width: 800,
         height: 800,
@@ -915,7 +925,7 @@ const waitForPassphrase = async () => {
             console.log("Called passphrase-correct")
             returned = true
             win2.close()
-            startTimer()
+            resetTimer(event, args)
             resolve(true)
         });
 
@@ -943,6 +953,16 @@ const loadPassphrase = async () =>
             resolve("")
         }
     })
+}
+
+// Function to call waiting for password, mostly so that code does not have to be reused across event handlers
+const checkPassphrase = async () => {
+    // test function for waiting externally checking to see if the password timer has run out
+    const res = await waitForPassphrase()
+    if(!res)
+        return false
+    else
+        return true
 }
 
 // Compute a simple integrity signature (sha256 of the password_hash contents)
@@ -1051,18 +1071,26 @@ const setPassphrase = async (event, args) => {
     return true;
 }
 
-
 let countdownDuration = 20 * 60; // 20 minutes in seconds
 let remainingTime = countdownDuration;
 let timerInterval = null;
 
-ipcMain.handle("reset-timer", (event, args) =>{
+ipcMain.handle("reset-timer", async (event, args) =>{
+    
+    const res = await waitForPassphrase()
+    if (!res)
+        return
+
+    resetTimer(event, args)
+})
+
+async function resetTimer(event, args) {
     clearInterval(timerInterval)
     timerInterval = null
     remainingTime = countdownDuration
     startTimer() // Restart the timer immediately after resetting
     win.webContents.send("updateDisplay", {remainingTime: remainingTime})
-})
+}
 
 function startTimer() {
   if (timerInterval) return; // Prevent multiple intervals

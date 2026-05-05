@@ -1,4 +1,5 @@
 // imageDetail/imageDetail.js
+const { ipcRenderer } = require('electron/renderer');
 const sqlite3 = require('sqlite3').verbose();
 const db = new sqlite3.Database('img.db');
 
@@ -253,6 +254,13 @@ function setupTagAndNotesHandlers() {
     if (!id) return;
 
     addBtn.addEventListener('click', async () => {
+
+        const res = await ipcRenderer.invoke("external-password-check");
+        if(res == false){
+            console.log("Did not read a result from the evoke to password check")
+            return;
+        }
+
         const t = tagInput.value.trim();
         if (!t) return;
         await addTag(id, t);
@@ -264,6 +272,14 @@ function setupTagAndNotesHandlers() {
 
     tagInput.addEventListener('keydown', async (e) => {
         if (e.key === 'Enter') {
+
+            // I can't tell whether or not this code is depreciated or not. Have to do further testing.
+            const res = await ipcRenderer.invoke("external-password-check");
+            if(res == false){
+                console.log("Did not read a result from the evoke to password check")
+                return;
+            }
+
             e.preventDefault();
             addBtn.click();
         }
