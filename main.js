@@ -144,11 +144,23 @@ const fetchData = async (event = null) => {
             console.log("\tContainer " + containerName + " exists? " + exists)
             if (exists == true)
             {
+
                 for await (const blob of containerClient.listBlobsFlat({ includeMetadata: false, includeSnapshots: false, includeTags: false,
                     includeVersions: false}))
                 {
                     toReturn.push(containerClient.getBlobClient(blob.name))
                 }
+
+                //according to AI grabbing the blobs in groups should be faster, through brief testing
+                //that does not appear to be true, leaving here just in case
+                // for await (const page of containerClient.listBlobsFlat({ includeMetadata: false, includeSnapshots: false, includeTags: false,
+                //     includeVersions: false}).byPage({maxPageSize:5000})) {
+            
+                //         for (const blob of page.segment.blobItems) {
+                //             toReturn.push(containerClient.getBlobClient(blob.name))
+                //         } 
+                // }
+
             }
             else
             {
@@ -169,7 +181,7 @@ const fetchData = async (event = null) => {
     imageData.forEach((v, i) => {
         if (v != null)
         {
-            console.log("\tIMAGE DATA")
+            console.log("\tProcessing image data for: " + userData[i].name)
             userData[i].numberInBucket = v.length;
             if (v.length > 0) {
                 const filename = v[v.length - 1]?.name
