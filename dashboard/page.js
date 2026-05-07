@@ -23,10 +23,12 @@ function setStatusNotif(text, duration = 3000) {
     }, duration)
 }
 
-function main() {
-    electron.ipcRenderer.invoke("fetch-data", { full: true })
-    document.getElementById("refresh-button").onclick = () => {
-        electron.ipcRenderer.invoke("fetch-data", { full: true })
+async function main() {
+    data = await electron.ipcRenderer.invoke("fetch-data", { localOnly: false })
+    render()
+    document.getElementById("refresh-button").onclick = async () => {
+        data = await electron.ipcRenderer.invoke("fetch-data", { localOnly: false })
+        render()
     }
     document.getElementById("onboard-button").onclick = () => {
         ipcRenderer.invoke("open-onboard-window" )
@@ -217,7 +219,8 @@ function render() {
                     console.error('download failed for user', user, err)
                     setStatusNotif(`${user.name}: Download Failed`, 6000)
                 } finally {
-                ipcRenderer.invoke('fetch-data', { full: true })
+                data = await ipcRenderer.invoke('fetch-data', { localOnly: true })
+                render()
             }
         }
         actionsDiv.appendChild(dlBtn)
@@ -229,22 +232,14 @@ function render() {
         }
         actionsDiv.appendChild(decBtn)
 
-        let removeBtn = createNode('p', 'Remove', 'button default-hidden')
-        removeBtn.onclick = async () => {
-            try {
-                await ipcRenderer.invoke('remove-user', user)
-            } catch (e) { console.error('remove-user failed', e) }
-            ipcRenderer.invoke('fetch-data', { full: true })
-        }
-        actionsDiv.appendChild(removeBtn)
-
         let clearBtn = createNode('p', 'Clear Bucket', 'button default-hidden')
         clearBtn.onclick = async () => {
             console.log('clearing bucket')
             try {
                 await ipcRenderer.invoke('clear-bucket', user)
             } catch (e) { console.error('clear-bucket failed', e) }
-            ipcRenderer.invoke('fetch-data', { full: true })
+            data = await ipcRenderer.invoke('fetch-data', { localOnly: true })
+            render()
         }
         actionsDiv.appendChild(clearBtn)
 

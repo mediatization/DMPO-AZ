@@ -153,6 +153,9 @@ const fetchData = async (event = null) => {
 
                 //according to AI grabbing the blobs in groups should be faster, through brief testing
                 //that does not appear to be true, leaving here just in case
+                //actual long term solution is going to be modifying the android app to modify a json
+                //inside of the storage container which will keep track of file counts and most recently uploaded 
+                //and then can be accessed accordingly by the dmpo to quickly fill in that information without having to iterate through every file 
                 // for await (const page of containerClient.listBlobsFlat({ includeMetadata: false, includeSnapshots: false, includeTags: false,
                 //     includeVersions: false}).byPage({maxPageSize:5000})) {
             
@@ -201,20 +204,7 @@ const fetchData = async (event = null) => {
 };
 
 ipcMain.handle("fetch-data", async (event, args) => {
-    data = getUserData();
-    try {
-        data = await fetchData(event);
-    }
-    catch (err) {
-        console.log('err', err)
-    }
-    
-    data = await updateLocalFiles(data)
-
-    event.sender.send("update-security-settings", { enforceSecurityCleanup: !!settings.enforceSecurityCleanup });
-   
-    event.sender.send("update-data", data)
-    return data
+    return refreshFileCounts(args.localOnly === undefined ? false : args.localOnly);
 });
 
 ipcMain.handle("download-images", async (event, args) => {
@@ -263,27 +253,46 @@ const watch = async (data, folderPath, name) => {
     ]
 }
 
-const updateLocalFiles = async (data) => {
-    if (data == null)
-        return null
-    data = await watch(data, "encrypted", "downloadedCount")
-    data = await watch(data, "decrypted", "decryptedCount")
-    return data
-}
+let fileCountData = null
+const refreshFileCounts = async (localOnly = false) => {
 
-const triggerUpdateLocalFiles = async () => {
-    try {
-        // fetch fresh user/image data and then update local file counts
-        let d = getUserData();
-        d = await fetchData();
-        d = await updateLocalFiles(d);
-        data = d;
-        if (win && win.webContents) {
-            win.webContents.send("update-data", data)
+    //first call to fetching data is guaranteed to be an online call so don't 
+    //need to worry about this being a null value initially causing issues
+    let oldData = fileCountData;
+
+    fileCountData = getUserData();
+
+    if (localOnly) {
+        for (i in fileCountData) {
+            //in cases where we onboard a new user not going to have matching participant 
+            let matchingParticipantFound = false;
+            for (j in oldData) {
+                if (oldData[j].encryptedKey === fileCountData[i].encryptedKey) {
+                    fileCountData[i].numberInBucket = oldData[j].numberInBucket;
+                    fileCountData[i].timeSince = oldData[j].timeSince;
+                    matchingParticipantFound = true;
+                    break;
+                }
+            }
+
+            if (!matchingParticipantFound) {
+                fileCountData[i].numberInBucket = 0
+            }
         }
-    } catch (e) {
-        console.error('triggerUpdateLocalFiles error', e)
     }
+    else {
+        try{
+            fileCountData = await fetchData();
+        } catch(e) {
+            console.error('error grabbing files from azure', e);
+        }
+    }
+    fileCountData = await watch(fileCountData, "encrypted", "downloadedCount");
+    fileCountData = await watch(fileCountData, "decrypted", "decryptedCount");
+
+    console.log(fileCountData);
+
+    return fileCountData;
 }
 
 ipcMain.handle("is-online", async (event, args) => { 
@@ -366,6 +375,15 @@ const decrypt = async (event, args) => {
     process.stderr.on("data", data => {
         dialog.showErrorBox("Script Error", data.toString())
     })
+
+    //need to think of way to refresh file counts after decryption, this does not work
+    // process.on("beforeExit", async (code) => {
+    //     const data = await refreshFileCounts(true);
+    //     if (win && win.webContents) {
+    //         win.webContents.send("update-data", data)
+    //     }
+    // });
+
     process.on("exit", code => {
         console.log('code', code)
         decryptionQueue.shift()
@@ -380,7 +398,6 @@ const decrypt = async (event, args) => {
             
         }
         */
-        triggerUpdateLocalFiles()
     })
 }
 
@@ -569,10 +586,9 @@ ipcMain.handle("register", async (event, args) => {
     decipher({ encryptedKey: encryptedKey, iv: iv.toString("hex")})
 
     // refresh dashboard so the new user appears immediately
-    try {
-        await triggerUpdateLocalFiles()
-    } catch (e) {
-        console.error('triggerUpdateLocalFiles after register failed', e)
+    const data = await refreshFileCounts(true);
+    if (win && win.webContents) {
+        win.webContents.send("update-data", data)
     }
 
     return { encryptedKey, hashedKey, qrcode }
@@ -586,22 +602,6 @@ const decipher = ({ encryptedKey, iv}) => {
     const key = decipher.update(_key).toString("hex")
     return key
 }
-
-ipcMain.handle("remove-user", async (event, user) => {
-
-    const encryptedPath = "encrypted/" + user.name + "/"
-    if (fs.existsSync(encryptedPath)) fs.rmdirSync(encryptedPath, { recursive: true });
-    const decryptedPath = "decrypted/" + user.name + "/"
-    if (fs.existsSync(decryptedPath)) fs.rmdirSync(decryptedPath, { recursive: true });
-    fs.unlinkSync("keys/" + user.hashedKey);
-
-    // refresh dashboard data after removal
-    try {
-        await triggerUpdateLocalFiles()
-    } catch (e) {
-        console.error('triggerUpdateLocalFiles after remove-user failed', e)
-    }
-})
 
 const deleteFiles = async (files) => (
     new Promise((resolve) => { 
@@ -624,6 +624,17 @@ const deleteFiles = async (files) => (
 )
 
 ipcMain.handle("clear-bucket", async (event, args) => {
+
+    //remove user was removed because it was keeping data stored in cloud would only delete keys and local images
+    //would likely create scenarios where data would be left in cloud encrypted with no way to ever decrypt it and have
+    //to manually delete, at some point the functionality to fully remove a user from the study should be re-introduced
+    //although maybe in a more elegant way, here is the code that was used in that function
+    // const encryptedPath = "encrypted/" + user.name + "/"
+    // if (fs.existsSync(encryptedPath)) fs.rmdirSync(encryptedPath, { recursive: true });
+    // const decryptedPath = "decrypted/" + user.name + "/"
+    // if (fs.existsSync(decryptedPath)) fs.rmdirSync(decryptedPath, { recursive: true });
+    // fs.unlinkSync("keys/" + user.hashedKey)
+
     console.log("Clearing bucket of user", args)
     const username = args.hashedKey.slice(0, 8)
     const files = await listBlobs(username)
@@ -636,14 +647,9 @@ ipcMain.handle("clear-bucket", async (event, args) => {
     if (response == 0)  {
         await deleteFiles(files)
         // ensure dashboard reflects cleared bucket
-        try {
-            await triggerUpdateLocalFiles()
-        } catch (e) {
-            console.error('triggerUpdateLocalFiles after clear-bucket failed', e)
-            // fallback: compute and send once
-            data = await fetchData()
-            data = await updateLocalFiles(data)
-            event.sender.send("update-data", data)
+        const data = await refreshFileCounts(true);
+        if (win && win.webContents) {
+            win.webContents.send("update-data", data)
         }
     }
 });
